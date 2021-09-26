@@ -2,8 +2,8 @@
 #define INTEGER_SEQUENCE_HPP
 #include <type_traits>
 
-namespace gomi {
-  using size_t = decltype (sizeof (0));
+namespace integer_sequence {
+  using std::size_t;
 
   template <typename T , T ... Indices>
   struct integer_sequence {};
@@ -68,5 +68,5 @@ namespace gomi {
 
   template <typename ... Types>
   using index_sequence_for = make_index_sequence <sizeof ... (Types)>;
-} // namespace gomi
+} // namespace integer_sequence
 #endif // INTEGER_SEQUENCE_HPP

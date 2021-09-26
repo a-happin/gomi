@@ -4,6 +4,10 @@
 #include <integer_sequence.hpp>
 
 namespace gomi {
+  using std::size_t;
+  using integer_sequence::index_sequence
+      , integer_sequence::make_index_sequence;
+
   namespace detail {
     template <typename>
     struct at_impl;
