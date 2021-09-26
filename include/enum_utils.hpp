@@ -1,5 +1,5 @@
-#ifndef UTIL_ENUM_UTILS_HPP
-#define UTIL_ENUM_UTILS_HPP
+#ifndef ENUM_UTILS_HPP
+#define ENUM_UTILS_HPP
 #include <type_traits>
 #include <concepts>
 #include <cstdint>
