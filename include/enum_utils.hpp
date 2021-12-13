@@ -4,8 +4,7 @@
 #include <concepts>
 #include <cstdint>
 
-#define ENUM_UTILS_USING_ENUM(scope, v) inline constexpr auto v = scope::v
-#define ENUM_UTILS_DEFINE_ENUM_OPERATOR2(ope, flag)                                             \
+#define ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR(ope, flag)                                        \
   template <Enum T>                                                                             \
   requires (bittest (provider_v <T>, flag))                                                     \
   inline constexpr auto operator ope (T lhs, T rhs) noexcept -> T                               \
@@ -58,7 +57,7 @@
     ope x;                                                      \
     return tmp;                                                 \
   }
-#define ENUM_UTILS_USING_OPERATORS                \
+#define ENUM_UTILS_USING_OPERATORS          \
   using enum_utils::operators::operator &   \
       , enum_utils::operators::operator &=  \
       , enum_utils::operators::operator |   \
@@ -120,30 +119,10 @@ namespace enum_utils
       /* PROVIDE_TO_BOOL              = 1u << 15, */ // cannot
 
       PROVIDE_BITWISE_OPERATORS    = PROVIDE_AND | PROVIDE_OR | PROVIDE_XOR | PROVIDE_NOT,
-      PROVIDE_SHIFT_OPERATIRS      = PROVIDE_SHIFT_LEFT | PROVIDE_SHIFT_RIGHT,
+      PROVIDE_SHIFT_OPERATORS      = PROVIDE_SHIFT_LEFT | PROVIDE_SHIFT_RIGHT,
       PROVIDE_ARITHMETIC_OPERATORS = PROVIDE_ADDITION | PROVIDE_SUBTRACTION | PROVIDE_MULTIPLICATION | PROVIDE_DIVISION | PROVIDE_MODULO | PROVIDE_UNARY_PLUS | PROVIDE_UNARY_MINUS | PROVIDE_INCREMENT | PROVIDE_DECREMENT,
     };
-
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_NONE);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_AND);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_OR);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_XOR);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_NOT);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_SHIFT_LEFT);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_SHIFT_RIGHT);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_ADDITION);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_SUBTRACTION);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_MULTIPLICATION);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_DIVISION);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_MODULO);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_UNARY_PLUS);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_UNARY_MINUS);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_INCREMENT);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_DECREMENT);
-
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_BITWISE_OPERATORS);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_SHIFT_OPERATIRS);
-    ENUM_UTILS_USING_ENUM (provide_operators_flag_t, PROVIDE_ARITHMETIC_OPERATORS);
+    using enum provide_operators_flag_t;
 
     template <typename T>
     inline constexpr auto provider_v = PROVIDE_NONE;
@@ -161,17 +140,17 @@ namespace enum_utils
     }
 
     // operators
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (&, PROVIDE_AND)
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (|, PROVIDE_OR)
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (^, PROVIDE_XOR)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (&, PROVIDE_AND)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (|, PROVIDE_OR)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (^, PROVIDE_XOR)
     ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (~, PROVIDE_NOT)
     ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR     (<<, PROVIDE_SHIFT_LEFT)
     ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR     (>>, PROVIDE_SHIFT_RIGHT)
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (+, PROVIDE_ADDITION)
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (-, PROVIDE_SUBTRACTION)
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (*, PROVIDE_MULTIPLICATION)
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (/, PROVIDE_DIVISION)
-    ENUM_UTILS_DEFINE_ENUM_OPERATOR2          (%, PROVIDE_MODULO)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (+, PROVIDE_ADDITION)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (-, PROVIDE_SUBTRACTION)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (*, PROVIDE_MULTIPLICATION)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (/, PROVIDE_DIVISION)
+    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (%, PROVIDE_MODULO)
     ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (+, PROVIDE_UNARY_PLUS)
     ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (-, PROVIDE_UNARY_MINUS)
     ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR (++, PROVIDE_INCREMENT)
@@ -179,8 +158,7 @@ namespace enum_utils
   } // namespace operators
 } // namespace enum_utils
 
-#undef ENUM_UTILS_USING_ENUM
-#undef ENUM_UTILS_DEFINE_ENUM_OPERATOR2
+#undef ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR
 #undef ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR
 #undef ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR
 #undef ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR
