@@ -59,14 +59,14 @@ namespace ansi
     inline constexpr es_t white   {37};
     inline constexpr es_t reset   {39};
 
-    inline constexpr auto color256 = [] (value_type x) constexpr noexcept
+    inline constexpr auto color256 = [] <std::integral T> (T x) constexpr noexcept
     {
-      return es_t {38, 5, x};
+      return es_t {38, 5, static_cast <value_type> (x)};
     };
 
-    inline constexpr auto rgb = [] (value_type r, value_type g, value_type b) constexpr noexcept
+    inline constexpr auto rgb = [] <std::integral T> (T r, T g, T b) constexpr noexcept
     {
-      return es_t {38, 2, r, g, b};
+      return es_t {38, 2, static_cast <value_type> (r), static_cast <value_type> (g), static_cast <value_type> (b)};
     };
   } // namespace fg
 
@@ -86,14 +86,14 @@ namespace ansi
     inline constexpr es_t white   {47};
     inline constexpr es_t reset   {49};
 
-    inline constexpr auto color256 = [] (value_type x) constexpr noexcept
+    inline constexpr auto color256 = [] <std::integral T> (T x) constexpr noexcept
     {
-      return es_t {48, 5, x};
+      return es_t {48, 5, static_cast <value_type> (x)};
     };
 
-    inline constexpr auto rgb = [] (value_type r, value_type g, value_type b) constexpr noexcept
+    inline constexpr auto rgb = [] <std::integral T> (T r, T g, T b) constexpr noexcept
     {
-      return es_t {48, 2, r, g, b};
+      return es_t {48, 2, static_cast <value_type> (r), static_cast <value_type> (g), static_cast <value_type> (b)};
     };
   } // namespace bg
 } // namespace ansi

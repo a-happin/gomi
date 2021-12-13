@@ -17,6 +17,13 @@ namespace util
   {
     return std::basic_string <CharT> {std::istreambuf_iterator <CharT> {stream}, std::istreambuf_iterator <CharT> {}};
   }
+
+  inline auto omajinai ()
+  {
+    std::cin.tie (nullptr);
+    std::ios::sync_with_stdio (false);
+    std::cout << std::boolalpha;
+  }
 }
 
 #endif

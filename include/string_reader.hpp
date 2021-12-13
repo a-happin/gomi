@@ -55,19 +55,35 @@ namespace string_reader
 {
   using std::size_t;
 
-  template <typename Char>
+  template <typename CharT>
   struct string_reader_t
   {
-    std::basic_string_view <Char> str;
-    typename std::basic_string_view <Char>::const_iterator ite = std::ranges::begin (str);
+    using Iterator = typename std::basic_string_view <CharT>::const_iterator;
+    std::basic_string_view <CharT> str;
+    Iterator ite = std::ranges::begin (str);
+
+    constexpr string_reader_t () noexcept = default;
+    constexpr string_reader_t (std::basic_string_view <CharT> str_) noexcept
+      : str {str_}
+    {}
+  private:
+    constexpr string_reader_t (std::basic_string_view <CharT> str_, Iterator ite_) noexcept
+      : str {str_}
+      , ite {ite_}
+    {}
+  public:
+    template <size_t N>
+    constexpr string_reader_t (const CharT (& str_)[N]) noexcept
+      : str {str_, N}
+    {}
 
     auto passed_string () const
     {
-      return std::basic_string_view <Char> {std::ranges::begin (str), ite};
+      return std::basic_string_view <CharT> {std::ranges::begin (str), ite};
     }
     auto remaining_string () const
     {
-      return std::basic_string_view <Char> {ite, std::ranges::end (str)};
+      return std::basic_string_view <CharT> {ite, std::ranges::end (str)};
     }
 
     auto can_read () const noexcept
@@ -85,7 +101,7 @@ namespace string_reader
       return * ite;
     }
 
-    auto starts_with (std::basic_string_view <Char> prefix, const skip_string_flag_t & flag = skip_string_flag_t::DEFAULT) const
+    auto starts_with (std::basic_string_view <CharT> prefix, const skip_string_flag_t & flag = skip_string_flag_t::DEFAULT) const
     {
       if (std::ranges::equal (
         std::ranges::begin (prefix),
@@ -97,7 +113,7 @@ namespace string_reader
         ),
         bittest (flag, CASE_INSENSITIVE)
           ? char_utils::equal_to_case_insensitive
-          : [] (Char c1, Char c2) constexpr noexcept { return c1 == c2; }
+          : [] (CharT c1, CharT c2) constexpr noexcept { return c1 == c2; }
       ))
       {
         if (bittest (flag, IS_KEYWORD))
@@ -118,7 +134,7 @@ namespace string_reader
 
     // f: (char) -> bool
     template <typename F>
-    requires requires (F && f, Char c)
+    requires requires (F && f, CharT c)
     {
       {std::forward <F> (f) (c)} -> std::convertible_to <bool>;
     }
@@ -143,7 +159,7 @@ namespace string_reader
       }
     }
 
-    auto skip (std::basic_string_view <Char> prefix, const skip_string_flag_t & flag = skip_string_flag_t::DEFAULT)
+    auto skip (std::basic_string_view <CharT> prefix, const skip_string_flag_t & flag = skip_string_flag_t::DEFAULT)
     {
       if (starts_with (prefix, flag))
       {
@@ -153,7 +169,7 @@ namespace string_reader
       return false;
     }
 
-    auto skip (const std::basic_regex <Char> & regex)
+    auto skip (const std::basic_regex <CharT> & regex)
     {
       if (std::match_results <decltype (ite)> m; regex_search (ite, std::ranges::end (str), m, regex, std::regex_constants::match_continuous))
       {
@@ -168,16 +184,26 @@ namespace string_reader
     {
       {string_reader.skip (std::forward <Ts> (x) ...)} -> std::convertible_to <bool>;
     }
-    auto read (Ts && ... x) -> std::optional <std::basic_string_view <Char>>
+    auto read (Ts && ... x) -> std::optional <std::basic_string_view <CharT>>
     {
       auto first = ite;
       if (skip (std::forward <Ts> (x) ...))
       {
-        return std::basic_string_view <Char> {first, ite};
+        return std::basic_string_view <CharT> {first, ite};
       }
       return std::nullopt;
     }
   };
+
+  template <typename CharT>
+  string_reader_t (std::basic_string_view <CharT>) -> string_reader_t <CharT>;
+
+  template <typename CharT>
+  string_reader_t (const std::basic_string <CharT> &) -> string_reader_t <CharT>;
+
+  template <typename CharT, size_t N>
+  string_reader_t (const CharT (&)[N]) -> string_reader_t <CharT>;
+
 } // namespace string_reader
 
 #endif
