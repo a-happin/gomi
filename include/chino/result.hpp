@@ -1,6 +1,7 @@
 #ifndef CHINO_RESULT_HPP
 #define CHINO_RESULT_HPP
 #include <variant>
+#define RETURN(...) noexcept (noexcept (__VA_ARGS__)) -> decltype (__VA_ARGS__) { return __VA_ARGS__ ; }
 
 namespace chino
 {
@@ -53,27 +54,21 @@ namespace chino
   };
 
   template <typename T>
-  inline constexpr auto success (T && x) -> success_t <T>
-  {
-    return success_t {std::forward <T> (x)};
-  }
+  inline constexpr auto success (T && x) RETURN (success_t <std::remove_cvref_t <T>> {std::forward <T> (x)})
 
   template <typename T>
-  inline constexpr auto failure (T && x) -> failure_t <T>
+  inline constexpr auto failure (T && x) RETURN (failure_t <std::remove_cvref_t <T>> {std::forward <T> (x)})
+
+  template <Result R>
+  inline constexpr auto is_success (const R & x) noexcept -> bool
   {
-    return failure_t {std::forward <T> (x)};
+    return std::holds_alternative <success_t <result_traits::success_type <R>>> (x);
   }
 
   template <Result R>
-  inline constexpr auto is_success (const R & x) -> bool
+  inline constexpr auto is_failure (const R & x) noexcept -> bool
   {
-    return std::holds_alternative <result_traits::success_type <R>> (x);
-  }
-
-  template <Result R>
-  inline constexpr auto is_failure (const R & x) -> bool
-  {
-    return std::holds_alternative <result_traits::failure_type <R>> (x);
+    return std::holds_alternative <failure_t <result_traits::failure_type <R>>> (x);
   }
 
   template <Result R>
@@ -101,49 +96,26 @@ namespace chino
     }
   }
 
-  template <typename U, Result R, typename F, typename G>
-  requires requires (R && x, F && f, G && g)
-  {
-    {std::forward <F> (f) (get_success (std::forward <R> (x)))} -> std::convertible_to <U>;
-    {std::forward <G> (g) (get_failure (std::forward <R> (x)))} -> std::convertible_to <U>;
-  }
-  inline constexpr auto match (R && x, F && f, G && g) -> U
+  template <Result R, typename F, typename G>
+  inline constexpr auto match (R && x, F && f, G && g) RETURN (is_success (x) ? std::forward <F> (f) (get_success (std::forward <R> (x))) : std::forward <G> (g) (get_failure (std::forward <R> (x))))
+
+  template <Result R, typename F>
+  inline constexpr auto map (R && x, F && f) -> result_t <std::remove_cvref_t <decltype (std::forward <F> (f) (get_success (std::forward <R> (x))))>, result_traits::failure_type <R>>
   {
     if (is_success (x))
     {
-      return std::forward <F> (f) (get_success (std::forward <R> (x)));
+      return success (std::forward <F> (f) (get_success (std::forward <R> (x))));
     }
     else
     {
-      return std::forward <G> (g) (get_failure (std::forward <R> (x)));
+      return failure (get_failure (std::forward <R> (x)));
     }
   }
 
+  // f: result_traits::success_type<R> => success_t<U> のとき、コンパイルエラー(substitution failure) になるが、それはmapを使えばいい話なのでhelperは書かないでおく
   template <Result R, typename F>
-  inline constexpr auto map (R && x, F && f) -> result_t <decltype (std::forward <F> (f) (get_success (std::forward <R> (x)))), result_traits::failure_type <R>>
-  {
-    if (is_success (x))
-    {
-      return success_t {std::forward <F> (f) (get_success (std::forward <R> (x)))};
-    }
-    else
-    {
-      return get_failure (std::forward <R> (x));
-    }
-  }
-
-  template <Result R, typename F>
-  inline constexpr auto flat_map (R && x, F && f) -> decltype (std::forward <F> (f) (get_success (std::forward <R> (x))))
-  {
-    if (is_success (x))
-    {
-      return std::forward <F> (f) (get_success (std::forward <R> (x)));
-    }
-    else
-    {
-      return get_failure (std::forward <R> (x));
-    }
-  }
+  inline constexpr auto flat_map (R && x, F && f) RETURN (is_success (x) ? std::forward <F> (f) (get_success (std::forward <R> (x))) : failure (get_failure (std::forward <R> (x))))
 }
 
+#undef RETURN
 #endif

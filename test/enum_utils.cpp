@@ -1,11 +1,11 @@
-#include <enum_utils.hpp>
+#include <chino/enum_utils.hpp>
 
 namespace ns1
 {
   enum class A : int
   {
   };
-  ENUM_UTILS_USING_OPERATORS;
+  CHINO_ENUM_UTILS_USING_OPERATORS;
 }
 
 namespace ns2
@@ -13,7 +13,7 @@ namespace ns2
   enum class A : unsigned long long
   {
   };
-  ENUM_UTILS_USING_OPERATORS;
+  CHINO_ENUM_UTILS_USING_OPERATORS;
 }
 
 namespace ns3
@@ -21,10 +21,10 @@ namespace ns3
   enum class A : char
   {
   };
-  ENUM_UTILS_USING_OPERATORS;
+  CHINO_ENUM_UTILS_USING_OPERATORS;
 }
 
-namespace enum_utils::operators
+namespace chino::enum_utils::operators
 {
   template <>
   inline constexpr auto provider_v <ns1::A> = PROVIDE_BITWISE_OPERATORS;
@@ -33,7 +33,7 @@ namespace enum_utils::operators
   inline constexpr auto provider_v <ns2::A> = PROVIDE_ARITHMETIC_OPERATORS;
 
   template <>
-  inline constexpr auto provider_v <ns3::A> = PROVIDE_SHIFT_OPERATIRS;
+  inline constexpr auto provider_v <ns3::A> = PROVIDE_SHIFT_OPERATORS;
 }
 
 

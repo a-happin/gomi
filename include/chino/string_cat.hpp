@@ -1,5 +1,5 @@
-#ifndef STRING_CAT_HPP
-#define STRING_CAT_HPP
+#ifndef CHINO_STRING_CAT_HPP
+#define CHINO_STRING_CAT_HPP
 #include <sstream>
 
 namespace chino
