@@ -1,10 +1,10 @@
-#ifndef ENUM_UTILS_HPP
-#define ENUM_UTILS_HPP
+#ifndef CHINO_ENUM_UTILS_HPP
+#define CHINO_ENUM_UTILS_HPP
 #include <type_traits>
 #include <concepts>
 #include <cstdint>
 
-#define ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR(ope, flag)                                        \
+#define CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR(ope, flag)                                        \
   template <Enum T>                                                                             \
   requires (bittest (provider_v <T>, flag))                                                     \
   inline constexpr auto operator ope (T lhs, T rhs) noexcept -> T                               \
@@ -18,7 +18,7 @@
   {                                                                                             \
     return lhs = lhs ope rhs;                                                                   \
   }
-#define ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR(ope, flag)                         \
+#define CHINO_ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR(ope, flag)                         \
   template <Enum T, std::integral IntType>                                       \
   requires (bittest (provider_v <T>, flag))                                      \
   inline constexpr auto operator ope (T lhs, IntType rhs) noexcept -> T          \
@@ -32,7 +32,7 @@
   {                                                                              \
     return lhs = lhs ope rhs;                                                    \
   }
-#define ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR(ope, flag)                \
+#define CHINO_ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR(ope, flag)                \
   template <Enum T>                                                     \
   requires (bittest (provider_v <T>, flag))                             \
   inline constexpr auto operator ope (T x) noexcept -> T                \
@@ -40,7 +40,7 @@
     using U = std::underlying_type_t <T>;                               \
     return static_cast <T> (static_cast <U> (ope static_cast <U> (x))); \
   }
-#define ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR(ope, flag)    \
+#define CHINO_ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR(ope, flag)    \
   template <Enum T>                                             \
   requires (bittest (provider_v <T>, flag))                     \
   inline constexpr auto operator ope (T & x) noexcept -> T &    \
@@ -57,33 +57,33 @@
     ope x;                                                      \
     return tmp;                                                 \
   }
-#define ENUM_UTILS_USING_OPERATORS          \
-  using enum_utils::operators::operator &   \
-      , enum_utils::operators::operator &=  \
-      , enum_utils::operators::operator |   \
-      , enum_utils::operators::operator |=  \
-      , enum_utils::operators::operator ^   \
-      , enum_utils::operators::operator ^=  \
-      , enum_utils::operators::operator ~   \
-      , enum_utils::operators::operator <<  \
-      , enum_utils::operators::operator <<= \
-      , enum_utils::operators::operator >>  \
-      , enum_utils::operators::operator >>= \
-      , enum_utils::operators::operator +   \
-      , enum_utils::operators::operator +=  \
-      , enum_utils::operators::operator -   \
-      , enum_utils::operators::operator -=  \
-      , enum_utils::operators::operator *   \
-      , enum_utils::operators::operator *=  \
-      , enum_utils::operators::operator /   \
-      , enum_utils::operators::operator /=  \
-      , enum_utils::operators::operator %   \
-      , enum_utils::operators::operator %=  \
-      , enum_utils::operators::operator ++  \
-      , enum_utils::operators::operator --  \
-      , enum_utils::operators::bittest
+#define CHINO_ENUM_UTILS_USING_OPERATORS          \
+  using chino::enum_utils::operators::operator &   \
+      , chino::enum_utils::operators::operator &=  \
+      , chino::enum_utils::operators::operator |   \
+      , chino::enum_utils::operators::operator |=  \
+      , chino::enum_utils::operators::operator ^   \
+      , chino::enum_utils::operators::operator ^=  \
+      , chino::enum_utils::operators::operator ~   \
+      , chino::enum_utils::operators::operator <<  \
+      , chino::enum_utils::operators::operator <<= \
+      , chino::enum_utils::operators::operator >>  \
+      , chino::enum_utils::operators::operator >>= \
+      , chino::enum_utils::operators::operator +   \
+      , chino::enum_utils::operators::operator +=  \
+      , chino::enum_utils::operators::operator -   \
+      , chino::enum_utils::operators::operator -=  \
+      , chino::enum_utils::operators::operator *   \
+      , chino::enum_utils::operators::operator *=  \
+      , chino::enum_utils::operators::operator /   \
+      , chino::enum_utils::operators::operator /=  \
+      , chino::enum_utils::operators::operator %   \
+      , chino::enum_utils::operators::operator %=  \
+      , chino::enum_utils::operators::operator ++  \
+      , chino::enum_utils::operators::operator --  \
+      , chino::enum_utils::operators::bittest
 
-namespace enum_utils
+namespace chino::enum_utils
 {
   using std::size_t;
 
@@ -140,26 +140,26 @@ namespace enum_utils
     }
 
     // operators
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (&, PROVIDE_AND)
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (|, PROVIDE_OR)
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (^, PROVIDE_XOR)
-    ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (~, PROVIDE_NOT)
-    ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR     (<<, PROVIDE_SHIFT_LEFT)
-    ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR     (>>, PROVIDE_SHIFT_RIGHT)
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (+, PROVIDE_ADDITION)
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (-, PROVIDE_SUBTRACTION)
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (*, PROVIDE_MULTIPLICATION)
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (/, PROVIDE_DIVISION)
-    ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (%, PROVIDE_MODULO)
-    ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (+, PROVIDE_UNARY_PLUS)
-    ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (-, PROVIDE_UNARY_MINUS)
-    ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR (++, PROVIDE_INCREMENT)
-    ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR (--, PROVIDE_DECREMENT)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (&, PROVIDE_AND)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (|, PROVIDE_OR)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (^, PROVIDE_XOR)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (~, PROVIDE_NOT)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR     (<<, PROVIDE_SHIFT_LEFT)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR     (>>, PROVIDE_SHIFT_RIGHT)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (+, PROVIDE_ADDITION)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (-, PROVIDE_SUBTRACTION)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (*, PROVIDE_MULTIPLICATION)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (/, PROVIDE_DIVISION)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR     (%, PROVIDE_MODULO)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (+, PROVIDE_UNARY_PLUS)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR     (-, PROVIDE_UNARY_MINUS)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR (++, PROVIDE_INCREMENT)
+    CHINO_ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR (--, PROVIDE_DECREMENT)
   } // namespace operators
-} // namespace enum_utils
+} // namespace chino::enum_utils
 
-#undef ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR
-#undef ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR
-#undef ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR
-#undef ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR
+#undef CHINO_ENUM_UTILS_DEFINE_ENUM_INFIX_OPERATOR
+#undef CHINO_ENUM_UTILS_DEFINE_ENUM_SHIFT_OPERATOR
+#undef CHINO_ENUM_UTILS_DEFINE_ENUM_UNARY_OPERATOR
+#undef CHINO_ENUM_UTILS_DEFINE_ENUM_INCREMENT_OPERATOR
 #endif

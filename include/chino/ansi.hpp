@@ -1,9 +1,9 @@
-#ifndef ANSI_HPP
-#define ANSI_HPP
+#ifndef CHINO_ANSI_HPP
+#define CHINO_ANSI_HPP
 #include <iostream>
-#include <typed_string.hpp>
+#include <chino/macros/typed_string.hpp>
 
-namespace ansi
+namespace chino::ansi
 {
   using std::size_t;
   using value_type = std::uint_fast8_t;
@@ -96,5 +96,5 @@ namespace ansi
       return es_t {48, 2, static_cast <value_type> (r), static_cast <value_type> (g), static_cast <value_type> (b)};
     };
   } // namespace bg
-} // namespace ansi
+} // namespace chino::ansi
 #endif
