@@ -6,7 +6,6 @@
 
 namespace chino
 {
-
   template <typename T>
   concept Optional = class_template_of <T, std::optional>;
 
