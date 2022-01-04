@@ -6,7 +6,7 @@
 namespace chino
 {
   template <Optional Opt, typename F, typename G>
-  inline constexpr auto match (Opt & opt, F && f, G && g) RETURN (opt ? std::forward <F> (f) (* std::forward <Opt> (opt)) : std::forward <G> (g) ())
+  inline constexpr auto match (Opt && opt, F && f, G && g) RETURN (opt ? std::forward <F> (f) (* std::forward <Opt> (opt)) : std::forward <G> (g) ())
 
   template <Optional Opt, typename F>
   inline constexpr auto map (Opt && opt, F && f) RETURN (opt ? std::optional {std::forward <F> (f) (* std::forward <Opt> (opt))} : std::nullopt)
