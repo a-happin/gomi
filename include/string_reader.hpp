@@ -5,8 +5,8 @@
 #include <regex>
 #include <optional>
 
-#include <typed_string.hpp>
-#include <enum_utils.hpp>
+#include <chino/macros/typed_string.hpp>
+#include <chino/enum_utils.hpp>
 #include <char_utils.hpp>
 /* #define TYPED_CHAR(T,x) get <T> (std::tuple {x, L##x, u##x, U##x, u8##x}) */
 

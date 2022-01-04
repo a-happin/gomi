@@ -1,7 +1,7 @@
 #ifndef CHAR_UTILS_HPP
 #define CHAR_UTILS_HPP
 #include <string_view>
-#include <typed_string.hpp>
+#include <chino/macros/typed_string.hpp>
 
 namespace char_utils
 {
