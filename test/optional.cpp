@@ -1,4 +1,29 @@
 #include <chino/optional.hpp>
+#include <iostream>
+#include <chino/showable.hpp>
+
+namespace std
+{
+  template <chino::Showable T>
+  inline auto operator << (std::ostream &stream, const std::optional <T> & opt) -> decltype (auto)
+  {
+    return opt ? stream << "Some (" << *opt << ")" : stream << "nullopt";
+  }
+}
+#include <chino/test.hpp>
+
+inline auto test_map (chino::test::test & t)
+{
+  std::optional <int> a = 3;
+  auto b = chino::map (a, [] (auto && x) { return std::forward <decltype (x)> (x) + 0.5; });
+  static_assert (chino::Showable <double>);
+  static_assert (chino::Showable <std::optional <double>>);
+  std::cout << a;
+  static_assert (chino::Showable <chino::test::test>);
+  /* t.assert_eq (b, std::optional {3.1}); */
+  /* t.assert_eq (b, std::optional {3.1}); */
+  t.assert_eq (b, std::optional {3.5});
+}
 
 auto main () -> int
 {
@@ -25,4 +50,7 @@ auto main () -> int
     constexpr auto b = chino::match (std::move (a), [] (auto && x) { return x; }, [] () -> std::optional <int> { return std::nullopt; });
     static_assert (b == 0);
   }
+  auto res = 0;
+  res |= chino::test::add_test (test_map);
+  return res;
 }

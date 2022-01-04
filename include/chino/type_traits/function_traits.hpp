@@ -1,7 +1,6 @@
-#ifndef CHINO_TYPE_TRAITS_HPP
-#define CHINO_TYPE_TRAITS_HPP
+#ifndef CHINO_TYPE_TRAITS_FUNCTION_TRAITS_HPP
+#define CHINO_TYPE_TRAITS_FUNCTION_TRAITS_HPP
 #include <type_traits>
-#include <chino/type_traits/is_class_template_of.hpp>
 
 namespace chino
 {
