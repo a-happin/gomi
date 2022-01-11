@@ -14,6 +14,12 @@ namespace chino::test
     unsigned passed = 0;
     unsigned total = 0;
 
+    constexpr test () noexcept = default;
+    constexpr test (const test &) noexcept = delete;
+    constexpr test & operator = (const test &) noexcept = delete;
+    constexpr test (test &&) noexcept = default;
+    constexpr test & operator = (test &&) noexcept = default;
+
     constexpr auto as_int () const &&
     {
       return passed == total ? 0 : 1;
