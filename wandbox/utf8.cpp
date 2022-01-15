@@ -12,7 +12,7 @@ auto main () -> int
   {
     chino::utf8::validate (str);
   }
-  auto is_valid = chino::utf8::validate (str) == str.length ();
+  auto is_valid = chino::utf8::find_invalid_byte (str) == std::u8string_view::npos;
   auto end = std::chrono::system_clock::now ();
   auto elapsed = std::chrono::duration_cast <std::chrono::milliseconds> (end - start).count ();
   std::cout << is_valid << std::endl;

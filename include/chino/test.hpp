@@ -50,6 +50,7 @@ namespace chino::test
     }
 
     template <typename T, typename U>
+    requires std::equality_comparable <T>
     auto assert_eq (const T & lhs, const U & rhs, source_location location = source_location::current ())
     {
       static_assert (std::is_same_v <T, U>);
@@ -108,7 +109,7 @@ namespace chino::test
   {
     {f (t)};
   }
-  constexpr inline auto add_test (F && f) -> int
+  [[nodiscard]] constexpr inline auto add_test (F && f) -> int
   {
     test t;
     f (t);
