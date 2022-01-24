@@ -47,7 +47,7 @@ namespace chino::utf8
     return static_cast <std::int8_t> (c) < -64;
   }
 
-  struct validated_u8string_view;
+  struct valid_u8string_view;
 
 
   // ********************************
@@ -55,22 +55,27 @@ namespace chino::utf8
   // ********************************
   using codepoint_t = char32_t;
 
-  inline constexpr auto unsafe_codepoint (std::u8string_view str) noexcept -> codepoint_t
+  inline constexpr auto unsafe_codepoint (const char8_t * ptr) noexcept -> codepoint_t
   {
-    if (auto width = char_width (str[0]); width != 1)
+    if (auto width = char_width (* ptr); width != 1)
     {
-      codepoint_t c = str[0] & (0b11111111u >> width);
+      codepoint_t c = * ptr & (0b11111111u >> width);
       for (std::remove_cvref_t <decltype (width)> i = 1; i < width; ++ i)
       {
         c <<= 6;
-        c |= str[i] & 0b00111111;
+        c |= * ++ ptr & 0b00111111;
       }
       return c;
     }
     else
     {
-      return str[0];
+      return * ptr;
     }
+  }
+
+  inline constexpr auto unsafe_codepoint (std::u8string_view str) noexcept -> codepoint_t
+  {
+    return unsafe_codepoint (str.data ());
   }
 
   inline constexpr auto codepoint (std::u8string_view str) noexcept -> std::optional <codepoint_t>
@@ -96,7 +101,7 @@ namespace chino::utf8
   }
 
   template <typename CharT>
-  inline auto print_as_utf8 (std::basic_ostream <CharT> &stream, codepoint_t val) -> std::basic_ostream <CharT> &
+  inline auto print_as_utf8 (std::basic_ostream <CharT> & stream, codepoint_t val) -> std::basic_ostream <CharT> &
   {
     if (val < 0x80)
     {
@@ -143,7 +148,7 @@ namespace chino::utf8
 
 
   // returns byte length of valid utf-8 string: std::size_t
-  inline constexpr auto find_invalid_byte (std::u8string_view str) noexcept -> std::size_t
+  inline constexpr auto find_invalid (std::u8string_view str) noexcept -> std::size_t
   {
     // 0XXXXXXX 0~7
     // 110YYYYX 10XXXXXX ~11
@@ -253,18 +258,17 @@ namespace chino::utf8
     return std::u8string_view::npos;
   }
 
-  struct validated_u8string_view
+  // 使い勝手が微妙に悪い
+  struct valid_u8string_view
   {
     std::u8string_view str;
 
-    explicit constexpr validated_u8string_view (std::u8string_view str_) noexcept
+    explicit constexpr valid_u8string_view (std::u8string_view str_) noexcept
       : str {std::move (str_)}
     {}
 
     struct codepoint_iterator
     {
-      friend struct validated_u8string_view;
-
       using difference_type = std::ptrdiff_t;
       using value_type = codepoint_t;
 
@@ -307,73 +311,178 @@ namespace chino::utf8
 
     constexpr auto begin () const noexcept
     {
-      return codepoint_iterator {str.data ()};
+      return str.begin ();
     }
     constexpr auto end () const noexcept
     {
+      return str.end ();
+    }
+    constexpr auto cbegin () const noexcept
+    {
+      return str.cbegin ();
+    }
+    constexpr auto cend () const noexcept
+    {
+      return str.cend ();
+    }
+    constexpr auto rbegin () const noexcept
+    {
+      return str.rbegin ();
+    }
+    constexpr auto rend () const noexcept
+    {
+      return str.rend ();
+    }
+    constexpr auto crbegin () const noexcept
+    {
+      return str.crbegin ();
+    }
+    constexpr auto crend () const noexcept
+    {
+      return str.crend ();
+    }
+    constexpr auto begin_as_codepoint_iterator () const noexcept
+    {
+      return codepoint_iterator {str.data ()};
+    }
+    constexpr auto end_as_codepoint_iterator () const noexcept
+    {
       return codepoint_iterator {str.data () + str.length ()};
+    }
+
+    constexpr auto size_in_bytes () const noexcept
+    {
+      return str.size ();
+    }
+    constexpr auto length_in_bytes () const noexcept
+    {
+      return str.length ();
+    }
+    constexpr auto length_in_chars () const noexcept
+    {
+      std::size_t res = 0;
+      for (auto ite = begin_as_codepoint_iterator (), ite_end = end_as_codepoint_iterator (); ite < ite_end; ++ ite) ++ res;
+      return res;
+    }
+    constexpr auto size_in_chars () const noexcept
+    {
+      return length_in_chars ();
+    }
+    constexpr auto max_size () const noexcept
+    {
+      return str.max_size ();
     }
     constexpr auto empty () const noexcept
     {
       return str.empty ();
     }
+
+    constexpr auto front_as_string () const noexcept
+    {
+      return str.substr (0, char_width (str[0]));
+    }
+    constexpr auto front_as_codepoint () const noexcept
+    {
+      return unsafe_codepoint (str);
+    }
+    constexpr auto data () const noexcept
+    {
+      return str.data ();
+    }
+
+    constexpr auto remove_prefix_1char () noexcept
+    {
+      str.remove_prefix (char_width (str[0]));
+    }
+    constexpr auto swap (valid_u8string_view & s) noexcept
+    {
+      return str.swap (s.str);
+    }
+
+    constexpr auto copy (char8_t * s, std::size_t n, std::size_t pos = 0) const
+    {
+      return str.copy (s, n, pos);
+    }
+    constexpr auto substr_in_bytes (std::size_t pos = 0, std::size_t n = std::u8string_view::npos) const
+    {
+      if (pos != 0)
+      {
+        if (is_subsequent (str[pos]))
+        {
+          throw "";
+        }
+      }
+      auto rlen = std::min (str.size () - pos, n);
+      if (rlen < str.length ())
+      {
+        if (is_subsequent (str[pos]))
+        {
+          throw "";
+        }
+      }
+      return valid_u8string_view {str.substr (pos, rlen)};
+    }
     constexpr auto starts_with (std::u8string_view str_) const noexcept
     {
       return str.starts_with (str_);
     }
-    constexpr auto starts_with (std::u32string_view str_) const noexcept
+    constexpr auto ends_with (std::u8string_view str_) const noexcept
     {
-      for (auto ite = begin (), ite_end = end (); auto && elem : str_)
-      {
-        if (not (ite < ite_end))
-        {
-          return false;
-        }
-        if (* ite != elem)
-        {
-          return false;
-        }
-        ++ ite;
-      }
-      return true;
+      return str.ends_with (str_);
     }
-    constexpr auto remove_prefix_1 () noexcept
+    constexpr auto contains (std::u8string_view str_) const noexcept
     {
-      str.remove_prefix (char_width (str[0]));
+      return str.contains (str_);
     }
+    /* constexpr auto starts_with (std::u32string_view str_) const noexcept */
+    /* { */
+    /*   for (auto ite = begin_as_codepoint_iterator (), ite_end = end_as_codepoint_iterator (); auto && elem : str_) */
+    /*   { */
+    /*     if (not (ite < ite_end)) */
+    /*     { */
+    /*       return false; */
+    /*     } */
+    /*     if (* ite != elem) */
+    /*     { */
+    /*       return false; */
+    /*     } */
+    /*     ++ ite; */
+    /*   } */
+    /*   return true; */
+    /* } */
 
-    friend constexpr auto operator == (const validated_u8string_view &, const validated_u8string_view &) noexcept -> bool = default;
-    friend constexpr auto operator <=> (const validated_u8string_view &, const validated_u8string_view &) noexcept -> std::strong_ordering = default;
+    friend constexpr auto operator == (const valid_u8string_view &, const valid_u8string_view &) noexcept -> bool = default;
+    friend constexpr auto operator <=> (const valid_u8string_view &, const valid_u8string_view &) noexcept -> std::strong_ordering = default;
   };
 
   inline namespace literals
   {
-    inline namespace validated_u8string_view_lietals
+    inline namespace valid_u8string_view_lietals
     {
-      inline constexpr auto operator ""_sv (const char8_t * str, std::size_t n) noexcept -> validated_u8string_view
+      inline constexpr auto operator ""_sv (const char8_t * str, std::size_t n) noexcept -> valid_u8string_view
       {
-        return validated_u8string_view {std::u8string_view {str, n}};
+        return valid_u8string_view {std::u8string_view {str, n}};
       }
     }
   }
 
-  inline constexpr auto validate (std::u8string_view str) noexcept -> std::optional <validated_u8string_view>
+  inline constexpr auto validate (std::u8string_view str) noexcept -> std::optional <valid_u8string_view>
   {
-    if (auto pos = find_invalid_byte (str); pos != std::u8string_view::npos)
+    if (auto pos = find_invalid (str); pos != std::u8string_view::npos)
     {
       return std::nullopt;
     }
-    return validated_u8string_view {str};
+    return valid_u8string_view {str};
   }
 
-  inline constexpr auto codepoint (validated_u8string_view str) noexcept -> codepoint_t
+  inline constexpr auto codepoint (valid_u8string_view str) noexcept -> codepoint_t
   {
     return unsafe_codepoint (str.str);
   }
 
   struct StringReader
   {
-    validated_u8string_view str;
+    valid_u8string_view str;
     struct Position
     {
       std::size_t line;
@@ -381,7 +490,7 @@ namespace chino::utf8
       friend constexpr auto operator == (const Position &, const Position &) noexcept -> bool = default;
       friend constexpr auto operator <=> (const Position &, const Position &) noexcept -> std::strong_ordering = default;
     } position;
-    constexpr StringReader (validated_u8string_view str_) noexcept
+    constexpr StringReader (valid_u8string_view str_) noexcept
       : str {std::move (str_)}
       , position {1, 1}
     {}
@@ -431,11 +540,6 @@ namespace chino::utf8
       return str.starts_with (str_);
     }
 
-    constexpr auto starts_with (std::u32string_view str_) const noexcept -> bool
-    {
-      return str.starts_with (str_);
-    }
-
     constexpr auto operator ++ () noexcept -> StringReader &
     {
       if (str.str[0] == '\n')
@@ -460,7 +564,7 @@ namespace chino::utf8
       else
       {
         ++ position.col;
-        str.remove_prefix_1 ();
+        str.remove_prefix_1char ();
       }
       return * this;
     }
