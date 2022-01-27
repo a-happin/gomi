@@ -261,7 +261,13 @@ namespace chino::utf8
   // 使い勝手が微妙に悪い
   struct valid_u8string_view
   {
+  private:
     std::u8string_view str;
+  public:
+
+    constexpr valid_u8string_view () noexcept
+      : str {}
+    {}
 
     explicit constexpr valid_u8string_view (std::u8string_view str_) noexcept
       : str {std::move (str_)}
@@ -305,6 +311,11 @@ namespace chino::utf8
       friend constexpr auto operator <=> (const codepoint_iterator & lhs, const codepoint_iterator & rhs) noexcept -> std::strong_ordering
       {
         return lhs.ptr <=> rhs.ptr;
+      }
+
+      explicit constexpr operator const char8_t * () const noexcept
+      {
+        return ptr;
       }
     };
     static_assert (std::forward_iterator <codepoint_iterator>);
@@ -358,13 +369,13 @@ namespace chino::utf8
     {
       return str.length ();
     }
-    constexpr auto length_in_chars () const noexcept
+    [[deprecated]] constexpr auto length_in_chars () const noexcept
     {
       std::size_t res = 0;
       for (auto ite = begin_as_codepoint_iterator (), ite_end = end_as_codepoint_iterator (); ite < ite_end; ++ ite) ++ res;
       return res;
     }
-    constexpr auto size_in_chars () const noexcept
+    [[deprecated]] constexpr auto size_in_chars () const noexcept
     {
       return length_in_chars ();
     }
@@ -390,9 +401,28 @@ namespace chino::utf8
       return str.data ();
     }
 
-    constexpr auto remove_prefix_1char () noexcept
+    constexpr auto remove_prefix_in_bytes (std::size_t n) -> valid_u8string_view &
+    {
+      if (0 < n && n < str.length () && is_subsequent (str[n]))
+      {
+        throw std::runtime_error {"invalid_utf8_error"};
+      }
+      str.remove_prefix (n);
+      return * this;
+    }
+    constexpr auto remove_suffix_in_bytes (std::size_t n) -> valid_u8string_view &
+    {
+      if (0 < n && n < str.length () && is_subsequent (str[str.length () - n]))
+      {
+        throw std::runtime_error {"invalid_utf8_error"};
+      }
+      str.remove_suffix (n);
+      return * this;
+    }
+    constexpr auto remove_prefix_1char () noexcept -> valid_u8string_view &
     {
       str.remove_prefix (char_width (str[0]));
+      return * this;
     }
     constexpr auto swap (valid_u8string_view & s) noexcept
     {
@@ -405,22 +435,8 @@ namespace chino::utf8
     }
     constexpr auto substr_in_bytes (std::size_t pos = 0, std::size_t n = std::u8string_view::npos) const
     {
-      if (pos != 0)
-      {
-        if (is_subsequent (str[pos]))
-        {
-          throw "";
-        }
-      }
-      auto rlen = std::min (str.size () - pos, n);
-      if (rlen < str.length ())
-      {
-        if (is_subsequent (str[pos]))
-        {
-          throw "";
-        }
-      }
-      return valid_u8string_view {str.substr (pos, rlen)};
+      return valid_u8string_view {* this}.remove_prefix_in_bytes (pos).remove_suffix_in_bytes (std::max (str.length () - pos, n) - n);
+      // copyof (str).remove_prefix (pos).remove_suffix (str.length () - pos < n ? 0 : str.length () - pos - n)
     }
     constexpr auto starts_with (std::u8string_view str_) const noexcept
     {
@@ -477,7 +493,7 @@ namespace chino::utf8
 
   inline constexpr auto codepoint (valid_u8string_view str) noexcept -> codepoint_t
   {
-    return unsafe_codepoint (str.str);
+    return str.front_as_codepoint ();
   }
 
   struct StringReader
@@ -507,12 +523,12 @@ namespace chino::utf8
 
     constexpr auto peek_as_string () const noexcept
     {
-      return str.str.substr (0, char_width (str.str[0]));
+      return str.front_as_string ();
     }
 
     constexpr auto peek_as_codepoint () const noexcept
     {
-      return codepoint (str);
+      return str.front_as_codepoint ();
     }
 
     template <typename F>
@@ -542,23 +558,23 @@ namespace chino::utf8
 
     constexpr auto operator ++ () noexcept -> StringReader &
     {
-      if (str.str[0] == '\n')
+      if (str.data ()[0] == '\n')
       {
         ++ position.line;
         position.col = 1;
-        str.str.remove_prefix (1);
+        str.remove_prefix_in_bytes (1);
       }
-      else if (str.str[0] == '\r')
+      else if (str.data ()[0] == '\r')
       {
         ++ position.line;
         position.col = 1;
-        if (str.str.length () >= 2 && str.str[1] == '\n')
+        if (str.length_in_bytes () >= 2 && str.data ()[1] == '\n')
         {
-          str.str.remove_prefix (2);
+          str.remove_prefix_in_bytes (2);
         }
         else
         {
-          str.str.remove_prefix (1);
+          str.remove_prefix_in_bytes (1);
         }
       }
       else
