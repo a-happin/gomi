@@ -15,5 +15,5 @@ fi
 for i in "$@"
 do
   printf 'Testing %s ...\n' "$i"
-  f "$i"
+  f "$i" || exit $?
 done

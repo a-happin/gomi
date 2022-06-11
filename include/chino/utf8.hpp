@@ -109,8 +109,7 @@ namespace chino::utf8
     }
     if (0xD800 <= val && val <= 0xDFFF) return stream;
     if (val > 0x10FFFF) return stream;
-    constexpr auto as_size = [] (bool x) constexpr noexcept -> std::size_t { return x ? 1 : 0; };
-    auto len = 2zu + as_size (val >= 0x800) + as_size (val >= 0x10000);
+    auto len = 2zu + (val >= 0x800) + (val >= 0x10000);
     char8_t buffer[4] = {static_cast <char8_t> (0b11111100000000u >> len), 0b10000000, 0b10000000, 0b10000000};
     for (decltype (len) i = 1; i < len; ++ i)
     {
@@ -148,7 +147,7 @@ namespace chino::utf8
 
 
   // returns byte length of valid utf-8 string: std::size_t
-  inline constexpr auto find_invalid (std::u8string_view str) noexcept -> std::size_t
+  inline constexpr auto find_invalid (std::u8string_view str) noexcept -> const char8_t *
   {
     // 0XXXXXXX 0~7
     // 110YYYYX 10XXXXXX ~11
@@ -182,11 +181,11 @@ namespace chino::utf8
         case 1:
           // ascii用高速化処理
           // is_alignedの判定は処理時間に影響がほぼなかった(むしろ遅くなってるまである)のでなしにした
-          using buf_t = std::size_t;
+          using buf_t = std::uint64_t;
           while (p + sizeof (buf_t) < end)
           {
             buf_t buf;
-            std::memcpy (&buf, p + 1, sizeof (buf_t));
+            std::memcpy (& buf, p + 1, sizeof (buf_t));
             if ((buf & static_cast <buf_t> (0x8080808080808080u)) == 0)
             {
               p += sizeof (buf_t);
@@ -198,65 +197,107 @@ namespace chino::utf8
           }
           continue;
         case 2:
-          if (p + 1 < end && is_subsequent (* ++ p)) continue;
+          if (++ p < end && is_subsequent (* p)) [[likely]] continue;
           break;
         case 3:
-          if (not (p + 2 < end)) break;
+          if (not (p + 2 < end)) [[unlikely]] break;
           if (* p == 0xE0)
           {
             // 冗長表現をエラーにする
-            if (is_in_range <0xA0, 0xBF> (* ++ p));
-            else break;
+            if (not is_in_range <0xA0, 0xBF> (* ++ p)) [[unlikely]] break;
           }
           else if (is_in_range <0xE1, 0xEC> (* p))
           {
-            if (is_subsequent (* ++ p));
-            else break;
+            if (not is_subsequent (* ++ p)) [[unlikely]] break;
           }
           else if (* p == 0xED)
           {
             // サロゲートコードポイントをエラーにする
-            if (is_in_range <0x80, 0x9F> (* ++ p));
-            else break;
+            if (not is_in_range <0x80, 0x9F> (* ++ p)) [[unlikely]] break;
           }
           else if (is_in_range <0xEE, 0xEF> (* p))
           {
-            if (is_subsequent (* ++ p));
-            else break;
+            if (not is_subsequent (* ++ p)) [[unlikely]] break;
           }
-          else break;
-          if (not (is_subsequent (* ++ p))) break;
+          else [[unlikely]] break;
+          if (not is_subsequent (* ++ p)) break;
           continue;
         case 4:
           if (not (p + 3 < end)) break;
           if (* p == 0xF0)
           {
             // 冗長表現をエラーにする
-            if (is_in_range <0x90, 0xBF> (* ++ p));
-            else break;
+            if (not is_in_range <0x90, 0xBF> (* ++ p)) [[unlikely]] break;
           }
           else if (is_in_range <0xF1, 0xF3> (* p))
           {
-            if (is_subsequent (* ++ p));
-            else break;
+            if (not is_subsequent (* ++ p)) [[unlikely]] break;
           }
           else if (* p == 0xF4)
           {
             // U+10FFFFより大きいコードポイントをエラーにする
-            if (is_in_range <0x80, 0x8F> (* ++ p));
-            else break;
+            if (not is_in_range <0x80, 0x8F> (* ++ p)) [[unlikely]] break;
           }
-          else break;
-          if (not (is_subsequent (* ++ p))) break;
-          if (not (is_subsequent (* ++ p))) break;
+          else [[unlikely]] break;
+          if (not is_subsequent (* ++ p)) [[unlikely]] break;
+          if (not is_subsequent (* ++ p)) [[unlikely]] break;
           continue;
         default:
           break;
       }
-      return static_cast <std::size_t> (old_p - begin);
+      return old_p;
     }
-    return std::u8string_view::npos;
+    return nullptr;
   }
+
+
+  struct codepoint_iterator
+  {
+    using difference_type = std::ptrdiff_t;
+    using value_type = codepoint_t;
+
+  private:
+    const char8_t * ptr;
+
+  public:
+    constexpr codepoint_iterator () noexcept = default;
+
+    explicit constexpr codepoint_iterator (const char8_t * str) noexcept
+      : ptr {str}
+    {}
+
+  public:
+    constexpr auto operator * () const noexcept -> codepoint_t
+    {
+      return unsafe_codepoint (ptr);
+    }
+
+    constexpr auto operator ++ () noexcept -> codepoint_iterator &
+    {
+      ptr += char_width (ptr[0]);
+      return * this;
+    }
+
+    constexpr auto operator ++ (int) noexcept -> codepoint_iterator
+    {
+      std::remove_cvref_t <decltype (* this)> tmp {* this};
+      ++ * this;
+      return tmp;
+    }
+
+    friend constexpr auto operator == (const codepoint_iterator & lhs, const codepoint_iterator & rhs) noexcept -> bool = default;
+    friend constexpr auto operator <=> (const codepoint_iterator & lhs, const codepoint_iterator & rhs) noexcept -> std::strong_ordering
+    {
+      return lhs.ptr <=> rhs.ptr;
+    }
+
+    explicit constexpr operator const char8_t * () const noexcept
+    {
+      return ptr;
+    }
+  };
+  static_assert (std::forward_iterator <codepoint_iterator>);
+
 
   // 使い勝手が微妙に悪い
   struct valid_u8string_view
@@ -272,53 +313,6 @@ namespace chino::utf8
     explicit constexpr valid_u8string_view (std::u8string_view str_) noexcept
       : str {std::move (str_)}
     {}
-
-    struct codepoint_iterator
-    {
-      using difference_type = std::ptrdiff_t;
-      using value_type = codepoint_t;
-
-    private:
-      const char8_t * ptr;
-
-    public:
-      constexpr codepoint_iterator () noexcept = default;
-
-      explicit constexpr codepoint_iterator (const char8_t * str_) noexcept
-        : ptr {str_}
-      {}
-
-    public:
-     constexpr auto operator * () const noexcept -> codepoint_t
-      {
-        return unsafe_codepoint (ptr);
-      }
-
-      constexpr auto operator ++ () noexcept -> codepoint_iterator &
-      {
-        ptr += char_width (ptr[0]);
-        return * this;
-      }
-
-      constexpr auto operator ++ (int) noexcept -> codepoint_iterator
-      {
-        std::remove_cvref_t <decltype (* this)> tmp {* this};
-        ++ * this;
-        return tmp;
-      }
-
-      friend constexpr auto operator == (const codepoint_iterator & lhs, const codepoint_iterator & rhs) noexcept -> bool = default;
-      friend constexpr auto operator <=> (const codepoint_iterator & lhs, const codepoint_iterator & rhs) noexcept -> std::strong_ordering
-      {
-        return lhs.ptr <=> rhs.ptr;
-      }
-
-      explicit constexpr operator const char8_t * () const noexcept
-      {
-        return ptr;
-      }
-    };
-    static_assert (std::forward_iterator <codepoint_iterator>);
 
     constexpr auto begin () const noexcept
     {
@@ -484,7 +478,7 @@ namespace chino::utf8
 
   inline constexpr auto validate (std::u8string_view str) noexcept -> std::optional <valid_u8string_view>
   {
-    if (auto pos = find_invalid (str); pos != std::u8string_view::npos)
+    if (auto pos = find_invalid (str); pos != nullptr)
     {
       return std::nullopt;
     }
@@ -498,7 +492,10 @@ namespace chino::utf8
 
   struct StringReader
   {
-    valid_u8string_view str;
+  private:
+    codepoint_iterator ite;
+    codepoint_iterator end;
+  public:
     struct Position
     {
       std::size_t line;
@@ -506,39 +503,32 @@ namespace chino::utf8
       friend constexpr auto operator == (const Position &, const Position &) noexcept -> bool = default;
       friend constexpr auto operator <=> (const Position &, const Position &) noexcept -> std::strong_ordering = default;
     } position;
-    constexpr StringReader (valid_u8string_view str_) noexcept
-      : str {std::move (str_)}
+
+    constexpr StringReader () noexcept
+      : ite {}
+      , end {}
       , position {1, 1}
     {}
 
-    constexpr auto is_eof () const noexcept
-    {
-      return str.empty ();
-    }
+    constexpr StringReader (valid_u8string_view str) noexcept
+      : ite {str.begin_as_codepoint_iterator ()}
+      , end {str.end_as_codepoint_iterator ()}
+      , position {1, 1}
+    {}
 
     constexpr auto can_read () const noexcept
     {
-      return ! is_eof ();
+      return ite < end;
     }
 
-    constexpr auto peek_as_string () const noexcept
+    constexpr auto is_eof () const noexcept
     {
-      return str.front_as_string ();
+      return not can_read ();
     }
 
-    constexpr auto peek_as_codepoint () const noexcept
+    constexpr auto peek () const noexcept
     {
-      return str.front_as_codepoint ();
-    }
-
-    template <typename F>
-    requires requires (F && f, std::u8string_view str_)
-    {
-      {std::forward <F> (f) (str_)} -> std::same_as <bool>;
-    }
-    constexpr auto try_peek (F && f) const noexcept -> bool
-    {
-      return can_read () && f (peek_as_string ());
+      return * ite;
     }
 
     template <typename F>
@@ -548,39 +538,31 @@ namespace chino::utf8
     }
     constexpr auto try_peek (F && f) const noexcept -> bool
     {
-      return can_read () && f (peek_as_codepoint ());
-    }
-
-    constexpr auto starts_with (std::u8string_view str_) const noexcept -> bool
-    {
-      return str.starts_with (str_);
+      return can_read () && f (peek ());
     }
 
     constexpr auto operator ++ () noexcept -> StringReader &
     {
-      if (str.data ()[0] == '\n')
+      if (static_cast <const char8_t *> (ite)[0] == u8'\n')
       {
         ++ position.line;
         position.col = 1;
-        str.remove_prefix_in_bytes (1);
+        ++ ite;
       }
-      else if (str.data ()[0] == '\r')
+      else if (static_cast <const char8_t *> (ite)[0] == u8'\r')
       {
         ++ position.line;
         position.col = 1;
-        if (str.length_in_bytes () >= 2 && str.data ()[1] == '\n')
+        ++ ite;
+        if (static_cast <const char8_t *> (ite) + 1 < static_cast <const char8_t *> (end) && static_cast <const char8_t *> (ite)[1] == u8'\n')
         {
-          str.remove_prefix_in_bytes (2);
-        }
-        else
-        {
-          str.remove_prefix_in_bytes (1);
+          ++ ite;
         }
       }
       else
       {
         ++ position.col;
-        str.remove_prefix_1char ();
+        ++ ite;
       }
       return * this;
     }
@@ -591,6 +573,9 @@ namespace chino::utf8
       ++ * this;
       return tmp;
     }
+
+    friend constexpr auto operator == (const StringReader &, const StringReader &) noexcept -> bool = default;
+    friend constexpr auto operator <=> (const StringReader &, const StringReader &) noexcept -> std::strong_ordering = default;
   };
 }
 
