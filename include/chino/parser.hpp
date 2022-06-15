@@ -1,91 +1,77 @@
 #ifndef CHINO_PARSER_HPP
 #define CHINO_PARSER_HPP
-#include <chino/utf8.hpp>
-#include <chino/char_utils.hpp>
 #include <tuple>
+#include <optional>
 #include <variant>
 #include <vector>
+#include <stdexcept>
 
 namespace chino::parser
 {
   struct never
   {
     constexpr never () noexcept = delete;
+
+    template <typename T>
+    constexpr operator const T & () const &
+    {
+      throw std::runtime_error {"bad never access"};
+    }
+
+    template <typename T>
+    constexpr operator const T && () const &&
+    {
+      throw std::runtime_error {"bad never access"};
+    }
+
+    template <typename T>
+    constexpr operator T & () &
+    {
+      throw std::runtime_error {"bad never access"};
+    }
+
+    template <typename T>
+    constexpr operator T && () &&
+    {
+      throw std::runtime_error {"bad never access"};
+    }
   };
 
-  struct StringReader
+  namespace detail
   {
-    chino::utf8::codepoint_iterator ite, end;
-    struct Position
+    template <typename, typename ...>
+    struct make_variant;
+
+    template <typename T, typename ... Ts, typename ... Us>
+    struct make_variant <std::variant <T, Ts ...>, Us ...>
     {
-      std::size_t line;
-      std::size_t col;
-    } position;
+      using type = typename std::conditional_t <(std::is_same_v <T, never> || ... || std::is_same_v <T, Us>), make_variant <std::variant <Ts ...>, Us ...>, make_variant <std::variant <Ts ...>, Us ..., T>>::type;
+    };
 
-    constexpr StringReader () noexcept
-      : ite {}
-      , end {}
-      , position {1, 1}
-    {}
-
-    constexpr StringReader (std::u8string_view str) noexcept
-      : ite {str.data ()}
-      , end {str.data () + str.length ()}
-      , position {1, 1}
-    {}
-
-    inline constexpr auto as_str () const noexcept
+    template <typename U, typename ... Us>
+    struct make_variant <std::variant <>, U, Us ...>
     {
-      return std::u8string_view {static_cast <const char8_t *> (ite), static_cast <const char8_t *> (end)};
-    }
+      using type = std::variant <U, Us ...>;
+    };
 
-    inline constexpr auto can_read () const noexcept
+    template <typename U>
+    struct make_variant <std::variant <>, U>
     {
-      return ite < end;
-    }
+      using type = U;
+    };
 
-    inline constexpr auto peek () const noexcept
+    template <>
+    struct make_variant <std::variant <>>
     {
-      return * ite;
-    }
-
-    inline constexpr auto next () noexcept -> decltype (auto)
-    {
-      if (* static_cast <const char8_t *> (ite) == u8'\n')
-      {
-        ++ ite;
-        ++ position.line;
-        position.col = 1;
-      }
-      else if (* static_cast <const char8_t *> (ite) == u8'\r')
-      {
-        ++ ite;
-        ++ position.line;
-        position.col = 1;
-        if (can_read () && * static_cast <const char8_t *> (ite) == u8'\n')
-        {
-          ++ ite;
-        }
-      }
-      else
-      {
-        ++ ite;
-        ++ position.col;
-      }
-      return * this;
-    }
-  };
-
-  struct ParserInput
-  {
-    StringReader reader;
-    std::vector <std::string> errors;
-
-    constexpr ParserInput (std::u8string_view source) noexcept
-      : reader {source}
-      , errors {}
-    {}
-  };
+      using type = never;
+    };
+  }
+  template <typename ... Ts>
+  using make_variant_t = typename detail::make_variant <std::variant <Ts ...>>::type;
+  static_assert (std::is_same_v <std::variant <int, double>, make_variant_t <int, double, double, int>>);
+  static_assert (std::is_same_v <int, make_variant_t <int, int>>);
+  static_assert (std::is_same_v <int, make_variant_t <int, int, never>>);
+  static_assert (std::is_same_v <never, make_variant_t <never>>);
 
   namespace result
   {
@@ -190,7 +176,7 @@ namespace chino::parser
     }
 
     template <Result R, typename F>
-    inline constexpr auto and_then (R && result, F && f) noexcept -> std::remove_cvref_t <decltype (f (get_success (std::forward <R> (result))))>
+    inline constexpr auto and_then (R && result, F && f) noexcept -> result_t <result_traits::success_type <decltype (f (get_success (std::forward <R> (result))))>, make_variant_t <result_traits::failure_type <R>, result_traits::failure_type <decltype (f (get_success (std::forward <R> (result))))>>>
     {
       if (is_success (result))
       {
@@ -198,7 +184,7 @@ namespace chino::parser
       }
       else if (is_failure (result))
       {
-        return as_failure (std::forward <R> (result));
+        return failure <make_variant_t <result_traits::failure_type <R>, result_traits::failure_type <decltype (f (get_success (std::forward <R> (result))))>>> {get_failure (std::forward <R> (result))};
       }
       else
       {
@@ -207,11 +193,11 @@ namespace chino::parser
     }
 
     template <Result R, typename F>
-    inline constexpr auto catch_error (R && result, F && f) noexcept -> std::remove_cvref_t <decltype (f (get_failure (std::forward <R> (result))))>
+    inline constexpr auto catch_error (R && result, F && f) noexcept -> result_t <make_variant_t <result_traits::success_type <R>, result_traits::success_type <decltype (f (get_failure (std::forward <R> (result))))>>, result_traits::failure_type <decltype (f (get_failure (std::forward <R> (result))))>>
     {
       if (is_success (result))
       {
-        return as_success (std::forward <R> (result));
+        return success <make_variant_t <result_traits::success_type <R>, result_traits::success_type <decltype (f (get_failure (std::forward <R> (result))))>>> {get_success (std::forward <R> (result))};
       }
       else if (is_failure (result))
       {
@@ -224,17 +210,11 @@ namespace chino::parser
     }
   }
 
-  template <typename P>
-  concept Parser = requires (P p, ParserInput & input)
-  {
-    {p (input)} -> result::Result;
-  };
+  template <typename P, typename I>
+  using ParserResultT = result::result_traits::success_type <std::invoke_result_t <P, I &>>;
 
-  template <typename P>
-  using ParserResultT = result::result_traits::success_type <std::invoke_result_t <P, ParserInput &>>;
-
-  template <typename P>
-  using ParserResultE = result::result_traits::failure_type <std::invoke_result_t <P, ParserInput &>>;
+  template <typename P, typename I>
+  using ParserResultE = result::result_traits::failure_type <std::invoke_result_t <P, I &>>;
 
 
   // --------------------------------
@@ -242,28 +222,28 @@ namespace chino::parser
   // --------------------------------
 
   // map: (Parser <T>, T -> U) -> Parser <U>
-  inline constexpr auto map = []
-  <Parser P, typename F>
-  requires requires (P p, F f, ParserInput & input)
+  inline constexpr auto map = [] <typename P, typename F> (P p, F f) constexpr noexcept
   {
-    {result::map (p (input), std::move (f))};
-  }
-  (P p, F f) constexpr noexcept {
-    return [p = std::move (p), f = std::move (f)] (ParserInput & input) constexpr noexcept {
+    return [p = std::move (p), f = std::move (f)] <typename I> requires requires (I & input)
+    {
+      {result::map (p (input), std::move (f))};
+    }
+    (I & input) constexpr noexcept
+    {
       return result::map (p (input), std::move (f));
     };
   };
 
 
   // flat_map: (Parser <T>, T -> Result <U>) -> Parser <U>
-  inline constexpr auto flat_map = []
-  <typename P, typename F>
-  requires requires (P p, F f, ParserInput & input)
+  inline constexpr auto flat_map = [] <typename P, typename F> (P p, F f) constexpr noexcept
   {
-    {result::and_then (p (input), std::move (f))} -> result::Result;
-  }
-  (P p, F f) constexpr noexcept {
-    return [p = std::move (p), f = std::move (f)] (ParserInput & input) constexpr noexcept {
+    return [p = std::move (p), f = std::move (f)] <typename I> requires requires (I & input)
+    {
+      {result::and_then (p (input), std::move (f))} -> result::Result;
+    }
+    (I & input) constexpr noexcept
+    {
       return result::and_then (p (input), std::move (f));
     };
   };
@@ -271,59 +251,22 @@ namespace chino::parser
 
   // failureのflat_map
   // recover: (Parser <T>, std::string -> Result <U>) -> Parser <U>
-  inline constexpr auto recover = []
-  <typename P, typename F>
-  requires requires (P p, F f, ParserInput & input)
+  inline constexpr auto recover = [] <typename P, typename F> (P p, F f) constexpr noexcept
   {
-    {result::catch_error (p (input), std::move (f))} -> result::Result;
-  }
-  (P p, F f) constexpr noexcept {
-    return [p = std::move (p), f = std::move (f)] (ParserInput & input) constexpr noexcept {
+    return [p = std::move (p), f = std::move (f)] <typename I> requires requires (I & input)
+    {
+      {result::catch_error (p (input), std::move (f))} -> result::Result;
+    }
+    (I & input) constexpr noexcept
+    {
       return result::catch_error (p (input), std::move (f));
     };
   };
 
 
-  namespace detail
-  {
-    template <typename, typename ...>
-    struct make_variant;
-
-    template <typename T, typename ... Ts, typename ... Us>
-    struct make_variant <std::variant <T, Ts ...>, Us ...>
-    {
-      using type = typename std::conditional_t <(std::is_same_v <T, never> || ... || std::is_same_v <T, Us>), make_variant <std::variant <Ts ...>, Us ...>, make_variant <std::variant <Ts ...>, Us ..., T>>::type;
-    };
-
-    template <typename U, typename ... Us>
-    struct make_variant <std::variant <>, U, Us ...>
-    {
-      using type = std::variant <U, Us ...>;
-    };
-
-    template <typename U>
-    struct make_variant <std::variant <>, U>
-    {
-      using type = U;
-    };
-
-    template <>
-    struct make_variant <std::variant <>>
-    {
-      using type = never;
-    };
-  }
-  template <typename ... Ts>
-  using make_variant_t = typename detail::make_variant <std::variant <Ts ...>>::type;
-  static_assert (std::is_same_v <std::variant <int, double>, make_variant_t <int, double, double, int>>);
-  static_assert (std::is_same_v <int, make_variant_t <int, int>>);
-  static_assert (std::is_same_v <int, make_variant_t <int, int, never>>);
-  static_assert (std::is_same_v <never, make_variant_t <never>>);
-
-
   // and_: (Parser <Ts> ...) -> Parser <std::tuple <ParserResultT <Ts> ...>>
-  template <typename E, typename ... Ts, typename P, typename ... Ps>
-  inline constexpr auto and_impl (ParserInput & input, std::tuple <Ts ...> && t, P && p, Ps && ... ps) noexcept -> result::result_t <std::tuple <Ts ..., ParserResultT <P>, ParserResultT <Ps> ...>, E>
+  template <typename E, typename I, typename ... Ts, typename P, typename ... Ps>
+  inline constexpr auto and_impl (I & input, std::tuple <Ts ...> && t, P && p, Ps && ... ps) noexcept -> result::result_t <std::tuple <Ts ..., ParserResultT <P, I>, ParserResultT <Ps, I> ...>, E>
   {
     auto res = std::forward <P> (p) (input);
     if (is_success (res))
@@ -346,18 +289,20 @@ namespace chino::parser
       return {};
     }
   }
-  inline constexpr auto and_ = [] <typename ... Ps> (Ps ... ps) constexpr noexcept {
-    return [... ps = std::move (ps)] (ParserInput & input) constexpr noexcept {
-      return and_impl <make_variant_t <ParserResultE <Ps> ...>> (input, std::tuple <> {}, std::move (ps) ...);
+  inline constexpr auto and_ = [] <typename ... Ps> (Ps ... ps) constexpr noexcept
+  {
+    return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept
+    {
+      return and_impl <make_variant_t <ParserResultE <Ps, I> ...>> (input, std::tuple <> {}, std::move (ps) ...);
     };
   };
 
 
   // or_: (Parser <Ts> ...) -> Parser <make_variant_t <std::variant <ParserResultT <Ts> ...>>>
-  template <typename T, typename E, typename P, typename ... Ps>
-  inline constexpr auto or_impl (ParserInput & input, P && p, Ps && ... ps) noexcept -> result::result_t <T, E>
+  template <typename T, typename E, typename I, typename P, typename ... Ps>
+  inline constexpr auto or_impl (I & input, P && p, Ps && ... ps) noexcept -> result::result_t <T, E>
   {
-    auto backup = input.reader;
+    auto backup = input;
     auto res = std::forward <P> (p) (input);
     if (is_success (res))
     {
@@ -375,121 +320,99 @@ namespace chino::parser
       }
       else
       {
-        input.reader = backup;
+        input = backup;
         return or_impl <T, E> (input, std::forward <Ps> (ps) ...);
       }
     }
   }
-  inline constexpr auto or_ = [] <typename ... Ps> (Ps ... ps) constexpr noexcept {
-    return [... ps = std::move (ps)] (ParserInput & input) constexpr noexcept {
-      return or_impl <make_variant_t <ParserResultT <Ps> ...>, make_variant_t <ParserResultE <Ps> ...>> (input, std::move (ps) ...);
+  inline constexpr auto or_ = [] <typename ... Ps> (Ps ... ps) constexpr noexcept
+  {
+    return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept
+    {
+      return or_impl <make_variant_t <ParserResultT <Ps, I> ...>, make_variant_t <ParserResultE <Ps, I> ...>> (input, std::move (ps) ...);
     };
   };
 
 
-  // --------------------------------
-  // example parsers
-  // --------------------------------
-
-  inline constexpr auto epsilon = [] (ParserInput & input) constexpr noexcept -> result::result_t <std::u8string_view, never>
+  // optional: (Parser <T>) -> Parser <std::optional <T>>
+  inline constexpr auto optional = [] <typename P> (P p) constexpr noexcept
   {
-    return result::success {input.reader.as_str ().substr (0, 0)};
-  };
-
-
-  inline constexpr auto eof = [] (ParserInput & input) constexpr noexcept -> result::result_t <std::u8string_view, never>
-  {
-    if (input.reader.can_read ())
+    return [p = std::move (p)] <typename I> (I & input) constexpr noexcept -> result::result_t <std::optional <ParserResultT <P, I>>, ParserResultE <P, I>>
     {
-      return {};
-    }
-    else
-    {
-      return result::success {input.reader.as_str ().substr (0, 0)};
-    }
-  };
-
-
-  inline constexpr auto raise = [] (std::string_view message) constexpr noexcept -> result::result_t <never, std::string>
-  {
-    return result::failure {std::string {message}};
-  };
-
-
-  inline constexpr auto char_ = [] (chino::utf8::codepoint_t c) constexpr noexcept
-  {
-    return [c = std::move (c)] (ParserInput & input) constexpr noexcept -> result::result_t <chino::utf8::codepoint_t, never> {
-      if (input.reader.can_read () && input.reader.peek () == c)
+      auto res = p (input);
+      if (is_success (res))
       {
-        input.reader.next ();
-        return result::success {c};
+        return result::success <std::optional <ParserResultT <P, I>>> {get_success (std::move (res))};
+      }
+      else if (is_failure (res))
+      {
+        return as_failure (std::move (res));
       }
       else
       {
+        return result::success <std::optional <ParserResultT <P, I>>> {};
+      }
+    };
+  };
+
+
+  // repeat: (Parser <T>) -> Parser <std::vector <T>>
+  inline constexpr auto repeat = [] <typename P> (P p) constexpr noexcept
+  {
+    return [p = std::move (p)] <typename I> (I & input) constexpr -> result::result_t <std::vector <ParserResultT <P, I>>, ParserResultE <P, I>>
+    {
+      std::vector <ParserResultT <P, I>> v;
+      while (true)
+      {
+        auto res = p (input);
+        if (is_success (res))
+        {
+          v.push_back (get_success (std::move (res)));
+        }
+        else if (is_failure (res))
+        {
+          return as_failure (std::move (res));
+        }
+        else
+        {
+          break;
+        }
+      }
+      return result::success {std::move (v)};
+    };
+  };
+
+
+  // repeat: (Parser <T>) -> Parser <std::vector <T>>
+  inline constexpr auto more = [] <typename P> (P p) constexpr noexcept
+  {
+    return [p = std::move (p)] <typename I> (I & input) constexpr -> result::result_t <std::vector <ParserResultT <P, I>>, ParserResultE <P, I>>
+    {
+      std::vector <ParserResultT <P, I>> v;
+      while (true)
+      {
+        auto res = p (input);
+        if (is_success (res))
+        {
+          v.push_back (get_success (std::move (res)));
+        }
+        else if (is_failure (res))
+        {
+          return as_failure (std::move (res));
+        }
+        else
+        {
+          break;
+        }
+      }
+      if (v.empty ())
+      {
         return {};
-      }
-    };
-  };
-
-
-  inline constexpr auto char_if = [] <typename F>
-  requires requires (F f, chino::utf8::codepoint_t c)
-  {
-    {f (c)} -> std::same_as <bool>;
-  } (F f) constexpr noexcept {
-    return [f = std::move (f)] (ParserInput & input) constexpr noexcept -> result::result_t <chino::utf8::codepoint_t, never>
-    {
-      if (input.reader.can_read ())
-      {
-        if (auto c = input.reader.peek (); f (c))
-        {
-          input.reader.next ();
-          return result::success {c};
-        }
-      }
-      return {};
-    };
-  };
-
-
-  inline constexpr auto string = [] (std::u8string_view str) constexpr noexcept
-  {
-    return [str = std::move (str)] (ParserInput & input) constexpr noexcept -> result::result_t <std::u8string_view, never>
-    {
-      if (auto substr = input.reader.as_str ().substr (0, str.length ()); substr == str)
-      {
-        auto end = chino::utf8::codepoint_iterator {static_cast <const char8_t *> (input.reader.ite) + substr.length ()};
-        while (input.reader.ite < end)
-        {
-          input.reader.next ();
-        }
-        return result::success {substr};
       }
       else
       {
-        return {};
+        return result::success {std::move (v)};
       }
-    };
-  };
-
-
-  inline constexpr auto keyword = [] (std::u8string_view str) constexpr noexcept
-  {
-    return [str = std::move (str)] (ParserInput & input) constexpr noexcept -> result::result_t <std::u8string_view, never>
-    {
-      if (auto substr = input.reader.as_str ().substr (0, str.length ()); substr == str)
-      {
-        auto end = chino::utf8::codepoint_iterator {static_cast <const char8_t *> (input.reader.ite) + substr.length ()};
-        if (input.reader.end <= end || not chino::char_utils::is_word (* end))
-        {
-          while (input.reader.ite < end)
-          {
-            input.reader.next ();
-          }
-          return result::success {substr};
-        }
-      }
-      return {};
     };
   };
 }
