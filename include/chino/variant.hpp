@@ -10,5 +10,6 @@ namespace chino
     return std::visit ([] <typename T> (T && x) constexpr noexcept -> To { return std::forward <T> (x); }, std::forward <From> (v));
   }
 }
+
 #endif
 

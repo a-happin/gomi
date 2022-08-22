@@ -1,6 +1,7 @@
 #ifndef CHINO_TYPE_TRAITS_FUNCTION_TRAITS_HPP
 #define CHINO_TYPE_TRAITS_FUNCTION_TRAITS_HPP
 #include <type_traits>
+#include <tuple>
 
 namespace chino
 {

@@ -24,6 +24,7 @@ namespace chino
     std::cin.tie (nullptr);
     std::ios::sync_with_stdio (false);
     std::cout << std::boolalpha;
+    std::cerr << std::boolalpha;
   }
 }
 
