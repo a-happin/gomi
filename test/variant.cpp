@@ -8,7 +8,7 @@ inline constexpr bool assert_eq (const T & a, const U & b) noexcept
 
 auto main () -> int
 {
-  constexpr std::variant <int, double> v = 0.0;
-  constexpr auto a = chino::variant_cast <int> (v);
-  static_assert (assert_eq (a, 0));
+  constexpr std::variant <int, char> v = '\0';
+  constexpr auto a = chino::variant_cast <long> (v);
+  static_assert (assert_eq (a, 0l));
 }

@@ -5,7 +5,6 @@
 #include <cstring> // std::memcpy
 #include <optional>
 #include <ostream>
-#include <span>
 
 namespace chino::utf8
 {
@@ -109,18 +108,15 @@ namespace chino::utf8
     }
     if (0xD800 <= val && val <= 0xDFFF) return stream;
     if (val > 0x10FFFF) return stream;
-    auto len = 2zu + (val >= 0x800) + (val >= 0x10000);
-    char8_t buffer[4] = {static_cast <char8_t> (0b11111100000000u >> len), 0b10000000, 0b10000000, 0b10000000};
-    for (decltype (len) i = 1; i < len; ++ i)
+    auto len = 1 + (val >= (1 << 11)) + (val >= (1 << 16)) /* + (val >= (1 << 21)) + (val >= (1 << 26)) */;
+    auto mask = 0b1111110000000u >> len;
+    len *= 6;
+    stream << static_cast <CharT> ((mask | (val >> len)) & 0xFF);
+    do
     {
-      buffer[len - i] |= static_cast <char8_t> (val & 0b00111111);
-      val >>= 6;
-    }
-    buffer[0] |= static_cast <char8_t> (val);
-    for (auto && elem : std::span {buffer, len})
-    {
-      stream << static_cast <CharT> (elem);
-    }
+      len -= 6;
+      stream << static_cast <CharT> ((0b00111111 & (val >> len)) | 0b10000000);
+    } while (len != 0);
     return stream;
   }
 
@@ -146,7 +142,8 @@ namespace chino::utf8
   }
 
 
-  // returns byte length of valid utf-8 string: std::size_t
+  // returns pointer to the beginning of the invalid string
+  // or nullptr if all is valid
   inline constexpr auto find_invalid (std::u8string_view str) noexcept -> const char8_t *
   {
     // 0XXXXXXX 0~7
@@ -300,7 +297,7 @@ namespace chino::utf8
 
 
   // 使い勝手が微妙に悪い
-  struct valid_u8string_view
+  struct [[deprecated ("これいる？")]] valid_u8string_view
   {
   private:
     std::u8string_view str;
@@ -469,6 +466,7 @@ namespace chino::utf8
   {
     inline namespace valid_u8string_view_lietals
     {
+      [[deprecated]]
       inline constexpr auto operator ""_sv (const char8_t * str, std::size_t n) noexcept -> valid_u8string_view
       {
         return valid_u8string_view {std::u8string_view {str, n}};
@@ -476,6 +474,7 @@ namespace chino::utf8
     }
   }
 
+  [[deprecated]]
   inline constexpr auto validate (std::u8string_view str) noexcept -> std::optional <valid_u8string_view>
   {
     if (auto pos = find_invalid (str); pos != nullptr)
@@ -485,98 +484,11 @@ namespace chino::utf8
     return valid_u8string_view {str};
   }
 
+  [[deprecated]]
   inline constexpr auto codepoint (valid_u8string_view str) noexcept -> codepoint_t
   {
     return str.front_as_codepoint ();
   }
-
-  struct StringReader
-  {
-  private:
-    codepoint_iterator ite;
-    codepoint_iterator end;
-  public:
-    struct Position
-    {
-      std::size_t line;
-      std::size_t col;
-      friend constexpr auto operator == (const Position &, const Position &) noexcept -> bool = default;
-      friend constexpr auto operator <=> (const Position &, const Position &) noexcept -> std::strong_ordering = default;
-    } position;
-
-    constexpr StringReader () noexcept
-      : ite {}
-      , end {}
-      , position {1, 1}
-    {}
-
-    constexpr StringReader (valid_u8string_view str) noexcept
-      : ite {str.begin_as_codepoint_iterator ()}
-      , end {str.end_as_codepoint_iterator ()}
-      , position {1, 1}
-    {}
-
-    constexpr auto can_read () const noexcept
-    {
-      return ite < end;
-    }
-
-    constexpr auto is_eof () const noexcept
-    {
-      return not can_read ();
-    }
-
-    constexpr auto peek () const noexcept
-    {
-      return * ite;
-    }
-
-    template <typename F>
-    requires requires (F && f, codepoint_t c)
-    {
-      {std::forward <F> (f) (c)} -> std::same_as <bool>;
-    }
-    constexpr auto try_peek (F && f) const noexcept -> bool
-    {
-      return can_read () && f (peek ());
-    }
-
-    constexpr auto operator ++ () noexcept -> StringReader &
-    {
-      if (static_cast <const char8_t *> (ite)[0] == u8'\n')
-      {
-        ++ position.line;
-        position.col = 1;
-        ++ ite;
-      }
-      else if (static_cast <const char8_t *> (ite)[0] == u8'\r')
-      {
-        ++ position.line;
-        position.col = 1;
-        ++ ite;
-        if (static_cast <const char8_t *> (ite) + 1 < static_cast <const char8_t *> (end) && static_cast <const char8_t *> (ite)[1] == u8'\n')
-        {
-          ++ ite;
-        }
-      }
-      else
-      {
-        ++ position.col;
-        ++ ite;
-      }
-      return * this;
-    }
-
-    constexpr auto operator ++ (int) noexcept -> StringReader
-    {
-      std::remove_cvref_t <decltype (* this)> tmp {* this};
-      ++ * this;
-      return tmp;
-    }
-
-    friend constexpr auto operator == (const StringReader &, const StringReader &) noexcept -> bool = default;
-    friend constexpr auto operator <=> (const StringReader &, const StringReader &) noexcept -> std::strong_ordering = default;
-  };
 }
 
 #endif

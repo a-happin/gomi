@@ -5,11 +5,10 @@
 
 namespace chino::ansi
 {
-  using std::size_t;
   using value_type = std::uint_fast8_t;
 
   // escape_sequence
-  template <size_t N>
+  template <std::size_t N>
   struct es_t {
     value_type values [N];
 
@@ -18,11 +17,10 @@ namespace chino::ansi
     {
       auto flags = stream.flags ();
       stream << std::dec << std::noshowbase << std::noshowpos << TYPED_STRING (CharT, "\033[");
-      for (size_t index = 0; auto && elem : x.values)
-      {
-        if (index ++ != 0) stream << TYPED_CHAR (CharT, ';');
-        stream << static_cast <int> (elem);
-      }
+      auto first = x.values;
+      auto last = first + N;
+      if (first < last) stream << static_cast <int> (* first ++);
+      while (first < last) stream << TYPED_CHAR (CharT, ';') << static_cast <int> (* first ++);
       stream << TYPED_CHAR (CharT, 'm');
       stream.flags (std::move (flags));
       return stream;

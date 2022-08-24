@@ -1,36 +1,61 @@
-#ifndef CHINO_PARSER_UTF8_PARSERS_HPP
-#define CHINO_PARSER_UTF8_PARSERS_HPP
+#ifndef CHINO_PARSER_UTF8_HPP
+#define CHINO_PARSER_UTF8_HPP
+#include <sstream>
+#include <stdexcept>
 #include <chino/parser.hpp>
 #include <chino/utf8.hpp>
 #include <chino/char_utils.hpp>
 #include <charconv>
 
-namespace chino::parser::utf8_parsers
+namespace chino::parser::utf8
 {
+  struct invalid_utf8_error : std::runtime_error {
+    invalid_utf8_error (std::ptrdiff_t pos)
+      : std::runtime_error {
+        [&] () {
+          std::ostringstream ss;
+          ss << "UTF-8として不正な文字列です\n" << (pos) << "バイト目に不明なバイト列を検出しました";
+          return std::move (ss).str ();
+        } ()
+      }
+    {
+    }
+    ~invalid_utf8_error () noexcept override;
+  };
+  invalid_utf8_error::~invalid_utf8_error () noexcept = default;
+
   struct StringReader
   {
-    chino::utf8::codepoint_iterator ite, end;
+    const char8_t * ite;
+    const char8_t * end;
     struct Position
     {
       std::size_t line;
       std::size_t col;
+      friend constexpr auto operator == (const Position &, const Position &) noexcept -> bool = default;
+      friend constexpr auto operator <=> (const Position &, const Position &) noexcept -> std::strong_ordering = default;
     } position;
 
     constexpr StringReader () noexcept
-      : ite {}
-      , end {}
+      : ite {nullptr}
+      , end {nullptr}
       , position {1, 1}
     {}
 
-    constexpr StringReader (std::u8string_view str) noexcept
+    constexpr StringReader (std::u8string_view str)
       : ite {str.data ()}
       , end {str.data () + str.length ()}
       , position {1, 1}
-    {}
+    {
+      if (auto p = chino::utf8::find_invalid (str); p != nullptr)
+      {
+        throw invalid_utf8_error {str.end () - p + 1};
+      }
+    }
 
     inline constexpr auto as_str () const noexcept
     {
-      return std::u8string_view {static_cast <const char8_t *> (ite), static_cast <const char8_t *> (end)};
+      return std::u8string_view {ite, end};
     }
 
     inline constexpr auto can_read () const noexcept
@@ -40,38 +65,39 @@ namespace chino::parser::utf8_parsers
 
     inline constexpr auto peek () const noexcept
     {
-      return * ite;
+      return chino::utf8::unsafe_codepoint (ite);
     }
 
     inline constexpr auto next () noexcept -> decltype (auto)
     {
-      if (* static_cast <const char8_t *> (ite) == u8'\n')
+      if (* ite == u8'\n')
       {
         ++ ite;
         ++ position.line;
         position.col = 1;
       }
-      else if (* static_cast <const char8_t *> (ite) == u8'\r')
+      else if (* ite == u8'\r')
       {
         ++ ite;
         ++ position.line;
         position.col = 1;
-        if (can_read () && * static_cast <const char8_t *> (ite) == u8'\n')
+        if (can_read () && * ite == u8'\n')
         {
           ++ ite;
         }
       }
       else
       {
-        ++ ite;
+        ite += chino::utf8::char_width (* ite);
         ++ position.col;
       }
       return * this;
     }
   };
 
+
   // --------------------------------
-  // example parsers
+  // basic parsers
   // --------------------------------
   inline constexpr auto epsilon = [] (StringReader & input) constexpr noexcept -> result::result_t <std::u8string_view, never>
   {
@@ -79,6 +105,95 @@ namespace chino::parser::utf8_parsers
   };
 
 
+  // --------------------------------
+  // 特殊parser combinator
+  // --------------------------------
+  // 文字列連結に特化したand_
+  // and_: (Parser <u8string_view> ...) -> Parser <u8string_view>
+  namespace impl
+  {
+    template <typename E, typename P, typename ... Ps>
+    inline constexpr auto and_ (StringReader & input, const char8_t * begin, const char8_t * end, P && p, Ps && ... ps) -> result::result_t <std::u8string_view, E>
+    {
+      auto res = std::forward <P> (p) (input);
+      if (is_success (res))
+      {
+        auto res_str = get_success (std::move (res));
+        if (end != res_str.data ())
+        {
+          throw std::runtime_error {"rejoin failed: 不正なパーサーが存在します"};
+        }
+
+        if constexpr (sizeof ... (Ps) == 0)
+        {
+          return result::success {std::u8string_view {begin, end + res_str.length ()}};
+        }
+        else
+        {
+          return and_ <E> (input, begin, end + res_str.length (), std::forward <Ps> (ps) ...);
+        }
+      }
+      else if (is_failure (res))
+      {
+        return result::failure <E> {get_failure (std::move (res))};
+      }
+      else
+      {
+        return {};
+      }
+    }
+  }
+  inline constexpr auto and_ = [] <typename ... Ps> requires (std::same_as <ParserResultT <Ps, StringReader>, std::u8string_view> && ...) (Ps ... ps) constexpr noexcept
+  {
+    return [... ps = std::move (ps)] (StringReader & input) constexpr
+    {
+      return impl::and_ <make_variant_t <ParserResultE <Ps, StringReader> ...>> (input, input.ite, input.ite, std::move (ps) ...);
+    };
+  };
+
+  // optional: (Parser <u8string_view>) -> Parser <u8string_view>
+  inline constexpr auto optional = [] <typename P> requires (std::same_as <ParserResultT <P, StringReader>, std::u8string_view>) (P p) constexpr noexcept
+  {
+    return or_ (std::move (p), epsilon);
+  };
+
+  // repeat: (Parser <u8string_view>) -> Parser <u8string_view>
+  inline constexpr auto repeat = [] <typename P> requires (std::same_as <ParserResultT <P, StringReader>, std::u8string_view>) (P p) constexpr noexcept
+  {
+    return [p = std::move (p)] (StringReader & input) constexpr -> result::result_t <std::u8string_view, ParserResultE <P, StringReader>>
+    {
+      auto begin = input.ite;
+      auto end = input.ite;
+      while (true)
+      {
+        auto res = p (input);
+        if (is_success (res))
+        {
+          auto res_str = get_success (res);
+          if (end != res_str.data ())
+          {
+            throw std::runtime_error {"rejoin failed: 不正なパーサーが存在します"};
+          }
+          end += res_str.length ();
+        }
+        else if (is_failure (res))
+        {
+          return as_failure (std::move (res));
+        }
+        else
+        {
+          break;
+        }
+      }
+      return result::success {std::u8string_view {begin, end}};
+    };
+  };
+
+
+
+  // --------------------------------
+  // example parsers
+  // --------------------------------
   inline constexpr auto position = [] (StringReader & input) constexpr noexcept -> result::result_t <StringReader::Position, never>
   {
     return result::success {input.position};
@@ -112,13 +227,18 @@ namespace chino::parser::utf8_parsers
       if (input.can_read () && input.peek () == c)
       {
         input.next ();
-        return result::success {std::u8string_view {static_cast <const char8_t *> (begin), static_cast <const char8_t *> (input.ite)}};
+        return result::success {std::u8string_view {begin, input.ite}};
       }
       else
       {
         return {};
       }
     };
+  };
+
+  inline constexpr auto character_opt = [] (chino::utf8::codepoint_t c) constexpr noexcept
+  {
+    return or_ (character (c), epsilon);
   };
 
 
@@ -135,7 +255,7 @@ namespace chino::parser::utf8_parsers
       if (input.can_read () && f (input.peek ()))
       {
         input.next ();
-        return result::success {std::u8string_view {static_cast <const char8_t *> (begin), static_cast <const char8_t *> (input.ite)}};
+        return result::success {std::u8string_view {begin, input.ite}};
       }
       return {};
     };
@@ -154,7 +274,7 @@ namespace chino::parser::utf8_parsers
       if (input.can_read () && not f (input.peek ()))
       {
         input.next ();
-        return result::success {std::u8string_view {static_cast <const char8_t *> (begin), static_cast <const char8_t *> (input.ite)}};
+        return result::success {std::u8string_view {begin, input.ite}};
       }
       return {};
     };
@@ -175,7 +295,7 @@ namespace chino::parser::utf8_parsers
       {
         input.next ();
       }
-      return result::success {std::u8string_view {static_cast <const char8_t *> (begin), static_cast <const char8_t *> (input.ite)}};
+      return result::success {std::u8string_view {begin, input.ite}};
     };
   };
 
@@ -194,7 +314,7 @@ namespace chino::parser::utf8_parsers
       {
         input.next ();
       }
-      return result::success {std::u8string_view {static_cast <const char8_t *> (begin), static_cast <const char8_t *> (input.ite)}};
+      return result::success {std::u8string_view {begin, input.ite}};
     };
   };
 
@@ -216,7 +336,7 @@ namespace chino::parser::utf8_parsers
         {
           input.next ();
         }
-        return result::success {std::u8string_view {static_cast <const char8_t *> (begin), static_cast <const char8_t *> (input.ite)}};
+        return result::success {std::u8string_view {begin, input.ite}};
       }
       else
       {
@@ -231,7 +351,7 @@ namespace chino::parser::utf8_parsers
     {
       if (auto substr = input.as_str ().substr (0, str.length ()); substr == str)
       {
-        auto end = chino::utf8::codepoint_iterator {static_cast <const char8_t *> (input.ite) + substr.length ()};
+        auto end = input.ite + str.length ();
         while (input.ite < end)
         {
           input.next ();
@@ -252,8 +372,8 @@ namespace chino::parser::utf8_parsers
     {
       if (auto substr = input.as_str ().substr (0, str.length ()); substr == str)
       {
-        auto end = chino::utf8::codepoint_iterator {static_cast <const char8_t *> (input.ite) + substr.length ()};
-        if (input.end <= end || not chino::char_utils::is_word (* end))
+        auto end = input.ite + str.length ();
+        if (input.end == end || not chino::char_utils::is_word (chino::utf8::unsafe_codepoint (end)))
         {
           while (input.ite < end)
           {

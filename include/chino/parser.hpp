@@ -158,6 +158,28 @@ namespace chino::parser
       return (as_failure (std::forward <R> (result)).value);
     }
 
+    template <Result R, typename F, typename G, typename H>
+    inline constexpr auto match (R && result, F && f, G && g, H && h) noexcept
+    {
+      using ResultF = decltype (f (get_success (std::forward <R> (result))));
+      using ResultG = decltype (g (get_failure (std::forward <R> (result))));
+      using ResultH = decltype (h ());
+      static_assert (std::is_same_v <ResultF, ResultG>);
+      static_assert (std::is_same_v <ResultF, ResultH>);
+      if (is_success (result))
+      {
+        return f (get_success (std::forward <R> (result)));
+      }
+      else if (is_failure (result))
+      {
+        return g (get_failure (std::forward <R> (result)));
+      }
+      else
+      {
+        return h ();
+      }
+    }
+
     template <Result R, typename F>
     inline constexpr auto map (R && result, F && f) noexcept -> result_t <std::remove_cvref_t <decltype (f (get_success (std::forward <R> (result))))>, result_traits::failure_type <R>>
     {
@@ -265,63 +287,69 @@ namespace chino::parser
 
 
   // and_: (Parser <Ts> ...) -> Parser <std::tuple <ParserResultT <Ts> ...>>
-  template <typename E, typename I, typename ... Ts, typename P, typename ... Ps>
-  inline constexpr auto and_impl (I & input, std::tuple <Ts ...> && t, P && p, Ps && ... ps) noexcept -> result::result_t <std::tuple <Ts ..., ParserResultT <P, I>, ParserResultT <Ps, I> ...>, E>
+  namespace impl
   {
-    auto res = std::forward <P> (p) (input);
-    if (is_success (res))
+    template <typename E, typename I, typename ... Ts, typename P, typename ... Ps>
+    inline constexpr auto and_ (I & input, std::tuple <Ts ...> && t, P && p, Ps && ... ps) noexcept -> result::result_t <std::tuple <Ts ..., ParserResultT <P, I>, ParserResultT <Ps, I> ...>, E>
     {
-      if constexpr (sizeof ... (Ps) == 0)
+      auto res = std::forward <P> (p) (input);
+      if (is_success (res))
       {
-        return result::success {std::tuple_cat (std::move (t), std::make_tuple (get_success (std::move (res))))};
+        if constexpr (sizeof ... (Ps) == 0)
+        {
+          return result::success {std::tuple_cat (std::move (t), std::make_tuple (get_success (std::move (res))))};
+        }
+        else
+        {
+          return and_ <E> (input, std::tuple_cat (std::move (t), std::make_tuple (get_success (std::move (res)))), std::forward <Ps> (ps) ...);
+        }
+      }
+      else if (is_failure (res))
+      {
+        return result::failure <E> {get_failure (std::move (res))};
       }
       else
       {
-        return and_impl <E> (input, std::tuple_cat (std::move (t), std::make_tuple (get_success (std::move (res)))), std::forward <Ps> (ps) ...);
+        return {};
       }
-    }
-    else if (is_failure (res))
-    {
-      return result::failure <E> {get_failure (std::move (res))};
-    }
-    else
-    {
-      return {};
     }
   }
   inline constexpr auto and_ = [] <typename ... Ps> (Ps ... ps) constexpr noexcept
   {
     return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept
     {
-      return and_impl <make_variant_t <ParserResultE <Ps, I> ...>> (input, std::tuple <> {}, std::move (ps) ...);
+      return impl::and_ <make_variant_t <ParserResultE <Ps, I> ...>> (input, std::tuple <> {}, std::move (ps) ...);
     };
   };
 
 
   // or_: (Parser <Ts> ...) -> Parser <make_variant_t <std::variant <ParserResultT <Ts> ...>>>
-  template <typename T, typename E, typename I, typename P, typename ... Ps>
-  inline constexpr auto or_impl (I & input, P && p, Ps && ... ps) noexcept -> result::result_t <T, E>
+  namespace impl
   {
-    auto backup = input;
-    auto res = std::forward <P> (p) (input);
-    if (is_success (res))
+    template <typename T, typename E, typename I, typename P, typename ... Ps>
+    inline constexpr auto or_ (I & input, P && p, Ps && ... ps) noexcept -> result::result_t <T, E>
     {
-      return result::success <T> {get_success (std::move (res))};
-    }
-    else if (is_failure (res))
-    {
-      return result::failure <E> {get_failure (std::move (res))};
-    }
-    else
-    {
-      if constexpr (sizeof ... (Ps) == 0)
+      auto backup = input;
+      auto res = std::forward <P> (p) (input);
+      if (is_success (res))
       {
-        return {};
+        return result::success <T> {get_success (std::move (res))};
+      }
+      else if (is_failure (res))
+      {
+        return result::failure <E> {get_failure (std::move (res))};
       }
       else
       {
-        input = backup;
-        return or_impl <T, E> (input, std::forward <Ps> (ps) ...);
+        if constexpr (sizeof ... (Ps) == 0)
+        {
+          return {};
+        }
+        else
+        {
+          input = backup;
+          return or_ <T, E> (input, std::forward <Ps> (ps) ...);
+        }
       }
     }
   }
@@ -329,7 +357,7 @@ namespace chino::parser
   {
     return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept
     {
-      return or_impl <make_variant_t <ParserResultT <Ps, I> ...>, make_variant_t <ParserResultE <Ps, I> ...>> (input, std::move (ps) ...);
+      return impl::or_ <make_variant_t <ParserResultT <Ps, I> ...>, make_variant_t <ParserResultE <Ps, I> ...>> (input, std::move (ps) ...);
     };
   };
 
@@ -416,5 +444,5 @@ namespace chino::parser
     };
   };
 }
-#endif
 
+#endif

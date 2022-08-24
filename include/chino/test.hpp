@@ -11,8 +11,8 @@ namespace chino::test
 
   struct test
   {
-    unsigned passed = 0;
-    unsigned total = 0;
+    std::size_t passed = 0;
+    std::size_t total = 0;
 
     constexpr test () noexcept = default;
     constexpr test (const test &) noexcept = delete;
