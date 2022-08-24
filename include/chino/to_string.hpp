@@ -14,8 +14,9 @@
 #include <unordered_map>
 #include <optional>
 #include <variant>
+#include <ranges>
 #include <chino/macros/typed_string.hpp>
-#include <chino/type_traits/is_char_type.hpp>
+#include <chino/type_traits/is_char.hpp>
 
 namespace chino
 {
@@ -85,7 +86,7 @@ namespace chino
     };
 
     // char
-    template <typename CharT, is_char_type T>
+    template <typename CharT, is_char T>
     requires (sizeof (T) <= sizeof (CharT))
     struct to_string_impl <CharT, T>
     {
@@ -107,7 +108,7 @@ namespace chino
     };
 
     // char (oversized) = delete
-    template <typename CharT, is_char_type T>
+    template <typename CharT, is_char T>
     requires (sizeof (T) > sizeof (CharT))
     struct to_string_impl <CharT, T>
     {
@@ -115,7 +116,7 @@ namespace chino
 
     // integral, floating_point
     template <typename CharT, typename T>
-    requires (std::is_arithmetic_v <T> && !std::same_as <T, bool> && !is_char_type <T>)
+    requires (std::is_arithmetic_v <T> && !std::same_as <T, bool> && !is_char <T>)
     struct to_string_impl <CharT, T>
     {
       static auto impl (const T & x) -> std::basic_string <CharT>
@@ -150,19 +151,28 @@ namespace chino
 
 
     // string
-    template <typename CharT>
-    struct to_string_impl <CharT, std::basic_string_view <CharT>>
+    template <typename CharT, typename Traits>
+    struct to_string_impl <CharT, std::basic_string_view <CharT, Traits>>
     {
-      static auto impl (std::basic_string_view <CharT> str) -> std::basic_string <CharT>
+      static auto impl (std::basic_string_view <CharT, Traits> str) -> std::basic_string <CharT>
       {
         std::basic_ostringstream <CharT> stream;
-        stream << TYPED_CHAR (CharT, '"') << str << TYPED_CHAR (CharT, '"');
+        stream << TYPED_CHAR (CharT, '"');
+        for (auto && elem : str)
+        {
+          if (elem == TYPED_CHAR (CharT, '\\') || elem == TYPED_CHAR (CharT, '"'))
+          {
+            stream << TYPED_CHAR (CharT, '\\');
+          }
+          stream << elem;
+        }
+        stream << TYPED_CHAR (CharT, '"');
         return std::move (stream).str ();
       }
     };
 
-    template <typename CharT>
-    struct to_string_impl <CharT, std::basic_string <CharT>> : to_string_impl <CharT, std::basic_string_view <CharT>> {};
+    template <typename CharT, typename Traits>
+    struct to_string_impl <CharT, std::basic_string <CharT, Traits>> : to_string_impl <CharT, std::basic_string_view <CharT, Traits>> {};
 
     template <typename CharT>
     struct to_string_impl <CharT, const CharT *> : to_string_impl <CharT, std::basic_string_view <CharT>> {};
@@ -182,14 +192,10 @@ namespace chino
       {
         std::basic_ostringstream <CharT> stream;
         stream << TYPED_STRING (CharT, "[");
-        for (std::size_t idx = 0; auto && elem : arr)
-        {
-          if (idx ++ != 0)
-          {
-            stream << TYPED_STRING (CharT, ", ");
-          }
-          stream << to_string <CharT> (elem);
-        }
+        auto ite = std::ranges::begin (arr);
+        auto last = std::ranges::end (arr);
+        if (ite != last) stream << to_string <CharT> (* ite ++);
+        while (ite != last) stream << TYPED_STRING (CharT, ", ") << to_string <CharT> (* ite ++);
         stream << TYPED_STRING (CharT, "]");
         return std::move (stream).str ();
       }
@@ -221,17 +227,17 @@ namespace chino
     template <typename CharT, into_string <CharT> T>
     struct to_string_impl <CharT, std::initializer_list <T>> : to_string_impl <CharT, T[]> {};
 
-    template <typename CharT, into_string <CharT> T>
-    struct to_string_impl <CharT, std::vector <T>> : to_string_impl <CharT, T[]> {};
+    template <typename CharT, into_string <CharT> T, typename Allocator>
+    struct to_string_impl <CharT, std::vector <T, Allocator>> : to_string_impl <CharT, T[]> {};
 
-    template <typename CharT, into_string <CharT> T>
-    struct to_string_impl <CharT, std::deque <T>> : to_string_impl <CharT, T[]> {};
+    template <typename CharT, into_string <CharT> T, typename Allocator>
+    struct to_string_impl <CharT, std::deque <T, Allocator>> : to_string_impl <CharT, T[]> {};
 
-    template <typename CharT, into_string <CharT> T>
-    struct to_string_impl <CharT, std::forward_list <T>> : to_string_impl <CharT, T[]> {};
+    template <typename CharT, into_string <CharT> T, typename Allocator>
+    struct to_string_impl <CharT, std::forward_list <T, Allocator>> : to_string_impl <CharT, T[]> {};
 
-    template <typename CharT, into_string <CharT> T>
-    struct to_string_impl <CharT, std::list <T>> : to_string_impl <CharT, T[]> {};
+    template <typename CharT, into_string <CharT> T, typename Allocator>
+    struct to_string_impl <CharT, std::list <T, Allocator>> : to_string_impl <CharT, T[]> {};
 
     template <typename CharT, into_string <CharT> T>
     struct to_string_impl <CharT, std::valarray <T>> : to_string_impl <CharT, T[]> {};
@@ -320,12 +326,22 @@ namespace chino
         std::basic_ostringstream <CharT> stream;
         stream << TYPED_STRING (CharT, "(");
         std::apply ([&stream] (auto && ... args) constexpr {
-          auto f = [idx = std::size_t {0}, &stream] (auto && elem) mutable
+          if constexpr (sizeof ... (args) > 0)
           {
-            if (idx ++ != 0) stream << TYPED_STRING (CharT, ", ");
-            stream << to_string <CharT> (std::forward <decltype (elem)> (elem));
-          };
-          (f (std::forward <decltype (args)> (args)), ...);
+            auto f = [idx = std::size_t {0}, &stream] (auto && elem) mutable
+            {
+              if (idx == 0)
+              {
+                stream << to_string <CharT> (std::forward <decltype (elem)> (elem));
+                idx = 1;
+              }
+              else
+              {
+                stream << TYPED_STRING (CharT, ", ") << to_string <CharT> (std::forward <decltype (elem)> (elem));
+              }
+            };
+            (f (std::forward <decltype (args)> (args)), ...);
+          }
         }, t);
         stream << TYPED_STRING (CharT, ")");
         return std::move (stream).str ();
