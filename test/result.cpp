@@ -1,67 +1,67 @@
-#include <string>
 #include <chino/result.hpp>
+#include <iostream>
+using namespace std;
+using namespace chino;
 
-using namespace std::literals::string_view_literals;
-
-template <std::floating_point T>
-constexpr auto double_equal (T a, T b)
+inline constexpr auto mydiv (int32_t a, int32_t b) -> result::result <int32_t, std::string_view>
 {
-  constexpr T eps = 1e-9;
-  return (a < b ? b - a : a - b) < eps;
+  if (b == 0)
+  {
+    return result::failure {std::string_view {"div by 0"}};
+  }
+  return result::success {a / b};
 }
 
-constexpr auto divide (double a, double b) noexcept -> chino::result_t <double, void *>
+[[noreturn]] inline auto operator << (std::ostream &, const never &) -> std::ostream &
 {
-  if (double_equal (b, 0.0))
+  chino::unreachable ();
+  /* static_cast <std::ostream &> (x); */
+}
+
+template <typename T>
+concept printable = requires (std::ostream & stream, const T & x)
+{
+  {stream << x};
+};
+
+template <result::Result R>
+auto print (R && r)
+{
+  if (is_success (r))
   {
-    return chino::failure <void *> (nullptr);
+    cout << "Success: " << get_success (std::forward <R> (r)) << endl;
   }
-  return chino::success (a / b);
+  else
+  {
+    cout << "Error: " << get_failure (std::forward <R> (r)) << endl;
+  }
 }
 
 auto main () -> int
 {
-  {
-    constexpr auto a = divide (1, 0);
-    static_assert (not chino::is_success (a));
-    static_assert (chino::is_failure (a));
-    static_assert (chino::get_failure (a) == nullptr);
-  }
+  using namespace std::literals;
 
-  {
-    constexpr auto a = divide (1, 1);
-    static_assert (chino::is_success (a));
-    static_assert (not chino::is_failure (a));
-    static_assert (double_equal (chino::get_success (a), 1.0));
-    static_assert (std::is_same_v <decltype (chino::get_success (a)), const double &>);
-    static_assert (std::is_same_v <decltype (chino::get_failure (a)), void * const &>);
-    static_assert (std::is_same_v <decltype (chino::unwrap (a)), const double &>);
-  }
+  constexpr auto a = mydiv (16, 2);
+  print (a);
 
-  {
-    constexpr auto a = divide (1000, 1);
-    constexpr auto b = chino::match (a,
-      [] (auto && x) { return double_equal (x, 0.0); },
-      [] (auto && x) { return x == nullptr; }
-    );
-    static_assert (std::is_same_v <decltype (b), const bool>);
-  }
+  constexpr auto b = mydiv (16, 0);
+  print (b);
 
-  {
-    constexpr auto a = divide (22, 7);
-    auto b = chino::map (a, [] (auto && x) { return std::to_string (x); });
-    static_assert (std::is_same_v <decltype(b), chino::result_t <std::string, void *>>);
+  constexpr auto c = result::failure {"always failed."sv};
+  print (std::move (c));
 
-    auto c = chino::map (a, [] (auto && x) { return std::forward <decltype (x)> (x); });
-    static_assert (std::is_same_v <decltype(c), chino::result_t <double, void *>>);
-  }
+  constexpr auto d = result::success {"always success"sv};
+  print (d);
 
-  {
-    constexpr auto a = divide (22, 0);
-    auto b = chino::flat_map (a, [] (auto && x) -> chino::result_t <std::string, void *> { return chino::success (std::to_string (x)); });
-    static_assert (std::is_same_v <decltype(b), chino::result_t <std::string, void *>>);
+  constexpr auto e = result::map (a, [] (auto x) { return x + 2; });
+  print (e);
 
-    auto c = chino::flat_map (a, [] (auto && x) -> chino::result_t <double, void*> { return chino::success (std::forward <decltype (x)> (x)); });
-    static_assert (std::is_same_v <decltype(c), chino::result_t <double, void *>>);
-  }
+  constexpr auto f = result::map (b, [] (auto x) { return x + 2; });
+  print (f);
+
+  constexpr auto g = result::catch_error (b, [] (auto &&) { return result::success {0}; });
+  print (g);
+
+  constexpr auto h = result::and_then (g, [] (auto &&) { return result::failure {"草"sv}; });
+  print (h);
 }

@@ -9,9 +9,26 @@ inline auto operator << (std::ostream & stream, const std::u8string_view & str) 
   return stream << std::string_view {reinterpret_cast <const char *> (str.data ()), reinterpret_cast <const char *> (str.data () + str.length ())};
 }
 
-inline auto operator << (std::ostream & stream, const char32_t &c) -> decltype (auto)
+inline auto operator << (std::ostream & stream, const char32_t & c) -> decltype (auto)
 {
   return chino::utf8::print_as_utf8 (stream, c);
+}
+
+
+namespace ast
+{
+  /* struct Token */
+  /* { */
+  /*   chino::utf8::StringReader::Position pos; */
+  /*   std::u8string_view str; */
+  /* }; */
+
+  /* struct IntegralLiteral */
+  /* { */
+  /*   chino::utf8::StringReader::Position pos; */
+  /*   std::u8string_view str; */
+  /*   uint64_t value; */
+  /* }; */
 }
 
 namespace lexer
@@ -19,103 +36,69 @@ namespace lexer
   using namespace chino::parser::utf8;
   using namespace chino::char_utils;
 
-  enum class TokenKind : uint_fast64_t
-  {};
-
-  struct Token
+  namespace detail
   {
-    TokenKind kind;
-    StringReader::Position pos;
-    std::u8string_view str;
-  };
-
-  inline constexpr auto tokenize = [] (TokenKind kind) constexpr noexcept {
-    return [kind = std::move (kind)] (std::tuple <StringReader::Position, std::u8string_view> && res) constexpr noexcept {
-      auto && [pos, str] = std::move (res);
-      return Token {std::move (kind), std::move (pos), std::move (str)};
+    inline constexpr auto is_identifier_head = [] (char32_t c) constexpr noexcept {
+      return is_alpha (c) || c == U'_';
     };
-  };
+    inline constexpr auto is_identifier_tail = chino::char_utils::is_word;
 
-  inline constexpr auto is_identifier_head = [] (char32_t c) constexpr noexcept {
-    return is_alpha (c) || c == U'_';
-  };
-  inline constexpr auto is_identifier_tail = chino::char_utils::is_word;
+    inline constexpr auto digits = more (character_if (is_digit));
 
-  inline constexpr auto digits = characters_more (is_digit);
+    inline constexpr auto identifier = and_ (
+      character_if (is_identifier_head),
+      repeat (character_if (is_identifier_tail))
+    );
 
-  inline constexpr auto identifier = and_ (
-    character_if (is_identifier_head),
-    characters_while (is_identifier_tail)
+    inline constexpr auto integral = flat_map (digits, from_string_view <int64_t>);
+
+    inline constexpr auto decimal_exponent = and_ (
+      character_if ([] (char32_t c) constexpr noexcept { return c == U'e' || c == U'E'; }),
+      optional (character_if ([] (char32_t c) constexpr noexcept { return c == U'-' || c == U'+'; })),
+      digits
+    );
+    inline constexpr auto floating_point = and_ (
+      optional (character (U'-')),
+      digits,
+      optional (and_ (
+          character (U'.'),
+          digits
+      )),
+      optional (decimal_exponent)
+    );
+
+  }
+
+  inline constexpr auto int_literal = tokenize (detail::integral);
+  inline constexpr auto double_literal = tokenize (
+    flat_map (detail::floating_point, from_string_view <double>)
   );
 }
 
 namespace parser
 {
-
-  using namespace chino::parser::utf8;
   using namespace chino::parser;
   using namespace chino::char_utils;
-
-  inline constexpr auto and_ = chino::parser::and_;
-
-  inline constexpr auto digits = characters_more (is_digit);
-
-
-  inline constexpr auto parse_int = flat_map (
-    characters_more (is_digit),
-    from_chars <double>
-  );
-
-  inline constexpr auto generic_floating_point = flat_map (
-    and_ (digits, character (U'.'), digits),
-    rejoin
-  );
-
-  inline constexpr auto literal_suffix = or_ (
-    lexer::identifier,
-    epsilon
-  );
-
-  inline constexpr auto decimal_exponent = or_ (
-    flat_map (
-      and_ (
-        character_if ([] (char32_t c) { return c == U'e' || c == U'E'; }),
-        or_ (
-          character_if ([] (char32_t c) { return c == U'-' || c == U'+'; }),
-          epsilon
-        ),
-        digits
-      ),
-      rejoin
-    ),
-    epsilon
-  );
-
-  inline constexpr auto generic_floating_point_literal = or_ (
-    flat_map (and_ (character_opt (U'-'), digits, decimal_exponent), rejoin),
-    flat_map (and_ (character_opt (U'-'), digits, character (U'.'), digits, decimal_exponent), rejoin)
-  );
-
-  inline constexpr auto floating_point_literal = and_ (
-      generic_floating_point_literal,
-      literal_suffix
-  );
 }
 
 auto main () -> int
 {
   using namespace chino::parser::utf8;
-  std::u8string source {u8"e18123.0abcd"};
+  using chino::never;
+
+  std::u8string source {u8"18123.0abcd"};
   StringReader input {source};
   std::vector <std::string> errors;
-  auto res = parser::decimal_exponent (input);
+  auto res = lexer::double_literal (input);
   /* static_assert (std::is_same_v <decltype (res), chino::parser::result::result_t <std::variant <char32_t, int>, std::string>>); */
   /* static_assert (std::is_same_v <decltype (res), chino::parser::result::result_t <std::tuple <char32_t, char32_t, char32_t, int>, chino::parser::never>>); */
-  static_assert (std::is_same_v <decltype (res), chino::parser::result::result_t <std::u8string_view, chino::parser::never>>);
+  /* static_assert (std::is_same_v <decltype (res), chino::parser::result::result <std::u8string_view, never>>); */
   if (is_success (res))
   {
+    auto && [pos, str, value] = get_success (res);
+    auto [line, col] = pos;
     std::cout << "Success: ";
-    std::cout << get_success (res);
+    std::cout << "line = " << line << ", col = " << col << ", str = " << str << ", value = " << value;
     /* std::visit ([](auto && x) -> decltype (auto) { return std::cout << x; }, get_success (res)); */
     std::cout << std::endl;
   }

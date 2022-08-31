@@ -27,7 +27,7 @@ namespace chino::utf8
   {
     using pointer_t = const char8_t *;
 
-    pointer_t ite, end;
+    pointer_t ptr, end;
     struct Position
     {
       std::size_t line, col;
@@ -36,14 +36,14 @@ namespace chino::utf8
     } position;
 
     constexpr StringReader () noexcept
-      : ite {nullptr}
+      : ptr {nullptr}
       , end {nullptr}
       , position {1, 1}
     {
     }
 
     constexpr StringReader (std::u8string_view str)
-      : ite {str.data ()}
+      : ptr {str.data ()}
       , end {str.data () + str.length ()}
       , position {1, 1}
     {
@@ -55,40 +55,40 @@ namespace chino::utf8
 
     constexpr auto as_str () const noexcept
     {
-      return std::u8string_view {ite, end};
+      return std::u8string_view {ptr, end};
     }
 
     constexpr auto can_read () const noexcept
     {
-      return ite < end;
+      return ptr < end;
     }
 
     constexpr auto peek () const noexcept
     {
-      return chino::utf8::unsafe_codepoint (ite);
+      return chino::utf8::unsafe_codepoint (ptr);
     }
 
     constexpr auto next () noexcept -> decltype (auto)
     {
-      if (* ite == u8'\n')
+      if (* ptr == u8'\n')
       {
-        ++ ite;
+        ++ ptr;
         ++ position.line;
         position.col = 1;
       }
-      else if (* ite == u8'\r')
+      else if (* ptr == u8'\r')
       {
-        ++ ite;
+        ++ ptr;
         ++ position.line;
         position.col = 1;
-        if (can_read () && * ite == u8'\n')
+        if (can_read () && * ptr == u8'\n')
         {
-          ++ ite;
+          ++ ptr;
         }
       }
       else
       {
-        ite += chino::utf8::char_width (* ite);
+        ptr += chino::utf8::char_width (* ptr);
         ++ position.col;
       }
       return * this;

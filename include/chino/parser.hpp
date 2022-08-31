@@ -1,5 +1,6 @@
 #ifndef CHINO_PARSER_HPP
 #define CHINO_PARSER_HPP
+#include <chino/make_variant.hpp>
 #include <tuple>
 #include <optional>
 #include <variant>
@@ -8,70 +9,39 @@
 
 namespace chino::parser
 {
-  struct never
-  {
-    constexpr never () noexcept = delete;
+  /* struct never */
+  /* { */
+  /*   constexpr never () noexcept = delete; */
 
-    template <typename T>
-    constexpr operator const T & () const &
-    {
-      throw std::runtime_error {"bad never access"};
-    }
+  /*   template <typename T> */
+  /*   constexpr operator const T & () const & */
+  /*   { */
+  /*     throw std::runtime_error {"bad never access"}; */
+  /*   } */
 
-    template <typename T>
-    constexpr operator const T && () const &&
-    {
-      throw std::runtime_error {"bad never access"};
-    }
+  /*   template <typename T> */
+  /*   constexpr operator const T && () const && */
+  /*   { */
+  /*     throw std::runtime_error {"bad never access"}; */
+  /*   } */
 
-    template <typename T>
-    constexpr operator T & () &
-    {
-      throw std::runtime_error {"bad never access"};
-    }
+  /*   template <typename T> */
+  /*   constexpr operator T & () & */
+  /*   { */
+  /*     throw std::runtime_error {"bad never access"}; */
+  /*   } */
 
-    template <typename T>
-    constexpr operator T && () &&
-    {
-      throw std::runtime_error {"bad never access"};
-    }
-  };
+  /*   template <typename T> */
+  /*   constexpr operator T && () && */
+  /*   { */
+  /*     throw std::runtime_error {"bad never access"}; */
+  /*   } */
+  /* }; */
 
-  namespace detail
-  {
-    template <typename, typename ...>
-    struct make_variant;
-
-    template <typename T, typename ... Ts, typename ... Us>
-    struct make_variant <std::variant <T, Ts ...>, Us ...>
-    {
-      using type = typename std::conditional_t <(std::is_same_v <T, never> || ... || std::is_same_v <T, Us>), make_variant <std::variant <Ts ...>, Us ...>, make_variant <std::variant <Ts ...>, Us ..., T>>::type;
-    };
-
-    template <typename U, typename ... Us>
-    struct make_variant <std::variant <>, U, Us ...>
-    {
-      using type = std::variant <U, Us ...>;
-    };
-
-    template <typename U>
-    struct make_variant <std::variant <>, U>
-    {
-      using type = U;
-    };
-
-    template <>
-    struct make_variant <std::variant <>>
-    {
-      using type = never;
-    };
-  }
-  template <typename ... Ts>
-  using make_variant_t = typename detail::make_variant <std::variant <Ts ...>>::type;
-  static_assert (std::is_same_v <std::variant <int, double>, make_variant_t <int, double, double, int>>);
-  static_assert (std::is_same_v <int, make_variant_t <int, int>>);
-  static_assert (std::is_same_v <int, make_variant_t <int, int, never>>);
-  static_assert (std::is_same_v <never, make_variant_t <never>>);
+  /* [[noreturn]] inline auto unreachable () noexcept -> never */
+  /* { */
+  /*   std_unreachable (); */
+  /* } */
 
   namespace result
   {
@@ -84,95 +54,229 @@ namespace chino::parser
     template <typename T>
     success (T &&) -> success <std::remove_cvref_t <T>>;
 
-    template <typename T>
+    template <typename E>
     struct failure
     {
-      T value;
+      E error;
+    };
+
+    template <typename E>
+    failure (E &&) -> failure <std::remove_cvref_t <E>>;
+
+    template <typename T, typename E>
+    using result = std::variant <std::monostate, success <T>, failure <E>>;
+
+    template <typename>
+    struct result_traits;
+
+    template <typename T, typename E>
+    struct result_traits <result <T, E>>
+    {
+      using success_type = T;
+      using failure_type = E;
+
+      template <typename R>
+      static constexpr auto is_success (const R & r) noexcept
+      {
+        return std::holds_alternative <success <T>> (r);
+      }
+      template <typename R>
+      static constexpr auto is_failure (const R & r) noexcept
+      {
+        return std::holds_alternative <failure <E>> (r);
+      }
+      template <typename R>
+      static constexpr auto as_success (R && r) noexcept -> decltype (auto)
+      {
+        return std::get <success <T>> (std::forward <R> (r));
+      }
+      template <typename R>
+      static constexpr auto as_failure (R && r) noexcept -> decltype (auto)
+      {
+        return std::get <failure <E>> (std::forward <R> (r));
+      }
     };
 
     template <typename T>
-    failure (T &&) -> failure <std::remove_cvref_t <T>>;
-
-    template <typename T, typename E>
-    using result_t = std::variant <std::monostate, success <T>, failure <E>>;
-
-    namespace result_traits
+    struct result_traits <success <T>>
     {
-      template <typename>
-      struct result_traits;
+      using success_type = T;
+      using failure_type = never;
 
-      template <typename T, typename E>
-      struct result_traits <result_t <T, E>>
+      template <typename R>
+      static constexpr auto is_success (const R &) noexcept
       {
-        using success_type = T;
-        using failure_type = E;
-      };
+        return true;
+      }
+      template <typename R>
+      static constexpr auto is_failure (const R &) noexcept
+      {
+        return false;
+      }
+      template <typename R>
+      static constexpr auto as_success (R && r) noexcept -> decltype (auto)
+      {
+        return std::forward <R> (r);
+      }
+      template <typename R>
+      static constexpr auto as_failure (R &&) noexcept -> copy_cvref_from <failure <never>, R &&>
+      {
+        return unreachable ();
+      }
+    };
+
+    template <typename E>
+    struct result_traits <failure <E>>
+    {
+      using success_type = never;
+      using failure_type = E;
 
       template <typename R>
-      using success_type = typename result_traits <std::remove_cvref_t <R>>::success_type;
+      static constexpr auto is_success (const R &) noexcept
+      {
+        return false;
+      }
+      template <typename R>
+      static constexpr auto is_failure (const R &) noexcept
+      {
+        return true;
+      }
+      template <typename R>
+      static constexpr auto as_success (R &&) noexcept -> copy_cvref_from <success <never>, R &&>
+      {
+        return unreachable ();
+      }
+      template <typename R>
+      static constexpr auto as_failure (R && r) noexcept -> decltype (auto)
+      {
+        return std::forward <R> (r);
+      }
+    };
+
+    template <typename T>
+    struct result_traits <std::optional <success <T>>>
+    {
+      using success_type = T;
+      using failure_type = never;
 
       template <typename R>
-      using failure_type = typename result_traits <std::remove_cvref_t <R>>::failure_type;
-    }
+      static constexpr auto is_success (const R & r) noexcept
+      {
+        return static_cast <bool> (r);
+      }
+      template <typename R>
+      static constexpr auto is_failure (const R &) noexcept
+      {
+        return false;
+      }
+      template <typename R>
+      static constexpr auto as_success (R && r) noexcept -> decltype (auto)
+      {
+        return * std::forward <R> (r);
+      }
+      template <typename R>
+      static constexpr auto as_failure (R &&) noexcept -> copy_cvref_from <failure <never>, R &&>
+      {
+        return unreachable ();
+      }
+    };
+
+    template <typename E>
+    struct result_traits <std::optional <failure <E>>>
+    {
+      using success_type = never;
+      using failure_type = E;
+
+      template <typename R>
+      static constexpr auto is_success (const R &) noexcept
+      {
+        return false;
+      }
+      template <typename R>
+      static constexpr auto is_failure (const R & r) noexcept
+      {
+        return static_cast <bool> (r);
+      }
+      template <typename R>
+      static constexpr auto as_success (R &&) noexcept -> copy_cvref_from <success <never>, R &&>
+      {
+        return unreachable ();
+      }
+      template <typename R>
+      static constexpr auto as_failure (R && r) noexcept -> decltype (auto)
+      {
+        return * std::forward <R> (r);
+      }
+    };
+    static_assert (std::is_same_v <decltype (result_traits <std::optional <failure <int>>>::as_failure (std::declval <std::optional <failure <int>> &> ())), failure <int> &>);
+    static_assert (std::is_same_v <decltype (result_traits <std::optional <failure <int>>>::as_failure (std::declval <std::optional <failure <int>> &&> ())), failure <int> &&>);
+    static_assert (std::is_same_v <decltype (result_traits <std::optional <failure <int>>>::as_failure (std::declval <const std::optional <failure <int>> &> ())), const failure <int> &>);
+    static_assert (std::is_same_v <decltype (result_traits <std::optional <failure <int>>>::as_failure (std::declval <const std::optional <failure <int>>> ())), const failure <int> &&>);
 
     template <typename T>
     concept Result = requires
     {
-      typename result_traits::success_type <T>;
-      typename result_traits::failure_type <T>;
+      typename result_traits <std::remove_cvref_t <T>>::success_type;
+      typename result_traits <std::remove_cvref_t <T>>::failure_type;
     };
 
     template <Result R>
-    inline constexpr auto is_success (const R & result) noexcept
+    using success_type = typename result_traits <std::remove_cvref_t <R>>::success_type;
+
+    template <Result R>
+    using failure_type = typename result_traits <std::remove_cvref_t <R>>::failure_type;
+
+    template <Result R>
+    inline constexpr auto is_success (const R & r) noexcept
     {
-      return std::holds_alternative <success <result_traits::success_type <R>>> (result);
+      return result_traits <std::remove_cvref_t <R>>::is_success (r);
     }
 
     template <Result R>
-    inline constexpr auto is_failure (const R & result) noexcept
+    inline constexpr auto is_failure (const R & r) noexcept
     {
-      return std::holds_alternative <failure <result_traits::failure_type <R>>> (result);
+      return result_traits <std::remove_cvref_t <R>>::is_failure (r);
     }
 
     template <Result R>
-    inline constexpr auto as_success (R && result) noexcept -> decltype (auto)
+    inline constexpr auto as_success (R && r) noexcept -> decltype (auto)
     {
-      return std::get <success <result_traits::success_type <R>>> (std::forward <R> (result));
+      return result_traits <std::remove_cvref_t <R>>::as_success (std::forward <R> (r));
     }
 
     template <Result R>
-    inline constexpr auto as_failure (R && result) noexcept -> decltype (auto)
+    inline constexpr auto as_failure (R && r) noexcept -> decltype (auto)
     {
-      return std::get <failure <result_traits::failure_type <R>>> (std::forward <R> (result));
+      return result_traits <std::remove_cvref_t <R>>::as_failure (std::forward <R> (r));
     }
 
     template <Result R>
-    inline constexpr auto get_success (R && result) noexcept -> decltype (auto)
+    inline constexpr auto get_success (R && r) noexcept -> decltype (auto)
     {
-      return (as_success (std::forward <R> (result)).value);
+      return (as_success (std::forward <R> (r)).value);
     }
 
     template <Result R>
-    inline constexpr auto get_failure (R && result) noexcept -> decltype (auto)
+    inline constexpr auto get_failure (R && r) noexcept -> decltype (auto)
     {
-      return (as_failure (std::forward <R> (result)).value);
+      return (as_failure (std::forward <R> (r)).error);
     }
 
     template <Result R, typename F, typename G, typename H>
-    inline constexpr auto match (R && result, F && f, G && g, H && h) noexcept
+    inline constexpr auto match (R && r, F && f, G && g, H && h) noexcept
     {
-      using ResultF = decltype (f (get_success (std::forward <R> (result))));
-      using ResultG = decltype (g (get_failure (std::forward <R> (result))));
+      using ResultF = decltype (f (get_success (std::forward <R> (r))));
+      using ResultG = decltype (g (get_failure (std::forward <R> (r))));
       using ResultH = decltype (h ());
       static_assert (std::is_same_v <ResultF, ResultG>);
       static_assert (std::is_same_v <ResultF, ResultH>);
-      if (is_success (result))
+      if (is_success (r))
       {
-        return f (get_success (std::forward <R> (result)));
+        return f (get_success (std::forward <R> (r)));
       }
-      else if (is_failure (result))
+      else if (is_failure (r))
       {
-        return g (get_failure (std::forward <R> (result)));
+        return g (get_failure (std::forward <R> (r)));
       }
       else
       {
@@ -181,15 +285,16 @@ namespace chino::parser
     }
 
     template <Result R, typename F>
-    inline constexpr auto map (R && result, F && f) noexcept -> result_t <std::remove_cvref_t <decltype (f (get_success (std::forward <R> (result))))>, result_traits::failure_type <R>>
+    inline constexpr auto map (R && r, F && f) noexcept (noexcept (f (get_success (std::forward <R> (r)))))
+    -> result <std::remove_cvref_t <decltype (f (get_success (std::forward <R> (r))))>, failure_type <R>>
     {
-      if (is_success (result))
+      if (is_success (r))
       {
-        return success {f (get_success (std::forward <R> (result)))};
+        return success {f (get_success (std::forward <R> (r)))};
       }
-      else if (is_failure (result))
+      else if (is_failure (r))
       {
-        return as_failure (std::forward <R> (result));
+        return as_failure (std::forward <R> (r));
       }
       else
       {
@@ -198,15 +303,16 @@ namespace chino::parser
     }
 
     template <Result R, typename F>
-    inline constexpr auto and_then (R && result, F && f) noexcept -> result_t <result_traits::success_type <decltype (f (get_success (std::forward <R> (result))))>, make_variant_t <result_traits::failure_type <R>, result_traits::failure_type <decltype (f (get_success (std::forward <R> (result))))>>>
+    inline constexpr auto and_then (R && r, F && f) noexcept (noexcept (f (get_success (std::forward <R> (r)))))
+    -> result <success_type <decltype (f (get_success (std::forward <R> (r))))>, make_variant <failure_type <R>, failure_type <decltype (f (get_success (std::forward <R> (r))))>>>
     {
-      if (is_success (result))
+      if (is_success (r))
       {
-        return f (get_success (std::forward <R> (result)));
+        return f (get_success (std::forward <R> (r)));
       }
-      else if (is_failure (result))
+      else if (is_failure (r))
       {
-        return failure <make_variant_t <result_traits::failure_type <R>, result_traits::failure_type <decltype (f (get_success (std::forward <R> (result))))>>> {get_failure (std::forward <R> (result))};
+        return failure <make_variant <failure_type <R>, failure_type <decltype (f (get_success (std::forward <R> (r))))>>> {get_failure (std::forward <R> (r))};
       }
       else
       {
@@ -215,15 +321,16 @@ namespace chino::parser
     }
 
     template <Result R, typename F>
-    inline constexpr auto catch_error (R && result, F && f) noexcept -> result_t <make_variant_t <result_traits::success_type <R>, result_traits::success_type <decltype (f (get_failure (std::forward <R> (result))))>>, result_traits::failure_type <decltype (f (get_failure (std::forward <R> (result))))>>
+    inline constexpr auto catch_error (R && r, F && f) noexcept (noexcept (f (get_failure (std::forward <R> (r)))))
+    -> result <make_variant <success_type <R>, success_type <decltype (f (get_failure (std::forward <R> (r))))>>, failure_type <decltype (f (get_failure (std::forward <R> (r))))>>
     {
-      if (is_success (result))
+      if (is_success (r))
       {
-        return success <make_variant_t <result_traits::success_type <R>, result_traits::success_type <decltype (f (get_failure (std::forward <R> (result))))>>> {get_success (std::forward <R> (result))};
+        return success <make_variant <success_type <R>, success_type <decltype (f (get_failure (std::forward <R> (r))))>>> {get_success (std::forward <R> (r))};
       }
-      else if (is_failure (result))
+      else if (is_failure (r))
       {
-        return f (get_failure (std::forward <R> (result)));
+        return f (get_failure (std::forward <R> (r)));
       }
       else
       {
@@ -233,10 +340,10 @@ namespace chino::parser
   }
 
   template <typename P, typename I>
-  using ParserResultT = result::result_traits::success_type <std::invoke_result_t <P, I &>>;
+  using ParserResultT = result::success_type <std::invoke_result_t <P, I &>>;
 
   template <typename P, typename I>
-  using ParserResultE = result::result_traits::failure_type <std::invoke_result_t <P, I &>>;
+  using ParserResultE = result::failure_type <std::invoke_result_t <P, I &>>;
 
 
   // --------------------------------
@@ -248,49 +355,62 @@ namespace chino::parser
   {
     return [p = std::move (p), f = std::move (f)] <typename I> requires requires (I & input)
     {
-      {result::map (p (input), std::move (f))};
+      {result::map (std::move (p) (input), std::move (f))};
     }
     (I & input) constexpr noexcept
     {
-      return result::map (p (input), std::move (f));
+      return result::map (std::move (p) (input), std::move (f));
     };
   };
 
 
-  // flat_map: (Parser <T>, T -> Result <U>) -> Parser <U>
+  // flat_map: (Parser <T>, T -> r <U>) -> Parser <U>
   inline constexpr auto flat_map = [] <typename P, typename F> (P p, F f) constexpr noexcept
   {
     return [p = std::move (p), f = std::move (f)] <typename I> requires requires (I & input)
     {
-      {result::and_then (p (input), std::move (f))} -> result::Result;
+      {result::and_then (std::move (p) (input), std::move (f))} -> result::Result;
     }
     (I & input) constexpr noexcept
     {
-      return result::and_then (p (input), std::move (f));
+      return result::and_then (std::move (p) (input), std::move (f));
     };
   };
 
 
   // failureのflat_map
-  // recover: (Parser <T>, std::string -> Result <U>) -> Parser <U>
+  // recover: (Parser <T>, std::string -> r <U>) -> Parser <U>
   inline constexpr auto recover = [] <typename P, typename F> (P p, F f) constexpr noexcept
   {
     return [p = std::move (p), f = std::move (f)] <typename I> requires requires (I & input)
     {
-      {result::catch_error (p (input), std::move (f))} -> result::Result;
+      {result::catch_error (std::move (p) (input), std::move (f))} -> result::Result;
     }
     (I & input) constexpr noexcept
     {
-      return result::catch_error (p (input), std::move (f));
+      return result::catch_error (std::move (p) (input), std::move (f));
     };
   };
+
+
+  // raise: (() -> T) -> Parser <never, T>
+  /* inline constexpr auto raise = [] <typename F> requires requires (F f) */
+  /* { */
+  /*   {std::move (f) ()}; */
+  /* } (F f) constexpr noexcept */
+  /* { */
+  /*   return [f = std::move (f)] <typename I> (I &) constexpr noexcept -> result::result <never, std::remove_cvref_t <decltype (std::move (f) ())>> */
+  /*   { */
+  /*     return result::failure {std::move (f) ()}; */
+  /*   }; */
+  /* }; */
 
 
   // and_: (Parser <Ts> ...) -> Parser <std::tuple <ParserResultT <Ts> ...>>
   namespace impl
   {
     template <typename E, typename I, typename ... Ts, typename P, typename ... Ps>
-    inline constexpr auto and_ (I & input, std::tuple <Ts ...> && t, P && p, Ps && ... ps) noexcept -> result::result_t <std::tuple <Ts ..., ParserResultT <P, I>, ParserResultT <Ps, I> ...>, E>
+    inline constexpr auto and_ (I & input, std::tuple <Ts ...> && t, P && p, Ps && ... ps) noexcept -> result::result <std::tuple <Ts ..., ParserResultT <P, I>, ParserResultT <Ps, I> ...>, E>
     {
       auto res = std::forward <P> (p) (input);
       if (is_success (res))
@@ -316,18 +436,18 @@ namespace chino::parser
   }
   inline constexpr auto and_ = [] <typename ... Ps> (Ps ... ps) constexpr noexcept
   {
-    return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept
+    return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept -> result::result <std::tuple <ParserResultT <Ps, I> ...>, make_variant <ParserResultE <Ps, I> ...>>
     {
-      return impl::and_ <make_variant_t <ParserResultE <Ps, I> ...>> (input, std::tuple <> {}, std::move (ps) ...);
+      return impl::and_ <make_variant <ParserResultE <Ps, I> ...>> (input, std::tuple <> {}, std::move (ps) ...);
     };
   };
 
 
-  // or_: (Parser <Ts> ...) -> Parser <make_variant_t <std::variant <ParserResultT <Ts> ...>>>
+  // or_: (Parser <Ts> ...) -> Parser <make_variant <std::variant <ParserResultT <Ts> ...>>>
   namespace impl
   {
     template <typename T, typename E, typename I, typename P, typename ... Ps>
-    inline constexpr auto or_ (I & input, P && p, Ps && ... ps) noexcept -> result::result_t <T, E>
+    inline constexpr auto or_ (I & input, P && p, Ps && ... ps) noexcept -> result::result <T, E>
     {
       auto backup = input;
       auto res = std::forward <P> (p) (input);
@@ -355,9 +475,9 @@ namespace chino::parser
   }
   inline constexpr auto or_ = [] <typename ... Ps> (Ps ... ps) constexpr noexcept
   {
-    return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept
+    return [... ps = std::move (ps)] <typename I> (I & input) constexpr noexcept -> result::result <make_variant <ParserResultT <Ps, I> ...>, make_variant <ParserResultE <Ps, I> ...>>
     {
-      return impl::or_ <make_variant_t <ParserResultT <Ps, I> ...>, make_variant_t <ParserResultE <Ps, I> ...>> (input, std::move (ps) ...);
+      return impl::or_ <make_variant <ParserResultT <Ps, I> ...>, make_variant <ParserResultE <Ps, I> ...>> (input, std::move (ps) ...);
     };
   };
 
@@ -365,9 +485,9 @@ namespace chino::parser
   // optional: (Parser <T>) -> Parser <std::optional <T>>
   inline constexpr auto optional = [] <typename P> (P p) constexpr noexcept
   {
-    return [p = std::move (p)] <typename I> (I & input) constexpr noexcept -> result::result_t <std::optional <ParserResultT <P, I>>, ParserResultE <P, I>>
+    return [p = std::move (p)] <typename I> (I & input) constexpr noexcept -> result::result <std::optional <ParserResultT <P, I>>, ParserResultE <P, I>>
     {
-      auto res = p (input);
+      auto res = std::move (p) (input);
       if (is_success (res))
       {
         return result::success <std::optional <ParserResultT <P, I>>> {get_success (std::move (res))};
@@ -387,7 +507,7 @@ namespace chino::parser
   // repeat: (Parser <T>) -> Parser <std::vector <T>>
   inline constexpr auto repeat = [] <typename P> (P p) constexpr noexcept
   {
-    return [p = std::move (p)] <typename I> (I & input) constexpr -> result::result_t <std::vector <ParserResultT <P, I>>, ParserResultE <P, I>>
+    return [p = std::move (p)] <typename I> (I & input) constexpr -> result::result <std::vector <ParserResultT <P, I>>, ParserResultE <P, I>>
     {
       std::vector <ParserResultT <P, I>> v;
       while (true)
@@ -411,38 +531,29 @@ namespace chino::parser
   };
 
 
-  // repeat: (Parser <T>) -> Parser <std::vector <T>>
-  inline constexpr auto more = [] <typename P> (P p) constexpr noexcept
+  // disallow_empty: (Parser <T>) -> Parser <T>
+  inline constexpr auto disallow_empty = [] <typename P> (P p) constexpr noexcept
   {
-    return [p = std::move (p)] <typename I> (I & input) constexpr -> result::result_t <std::vector <ParserResultT <P, I>>, ParserResultE <P, I>>
+    return flat_map (std::move (p), [] <typename T> (T && v) constexpr noexcept -> result::result <T, never>
     {
-      std::vector <ParserResultT <P, I>> v;
-      while (true)
-      {
-        auto res = p (input);
-        if (is_success (res))
-        {
-          v.push_back (get_success (std::move (res)));
-        }
-        else if (is_failure (res))
-        {
-          return as_failure (std::move (res));
-        }
-        else
-        {
-          break;
-        }
-      }
       if (v.empty ())
       {
         return {};
       }
       else
       {
-        return result::success {std::move (v)};
+        return result::success {std::forward <T> (v)};
       }
-    };
+    });
   };
+
+
+  // more: (Parser <T>) -> Parser <std::vector <T>>
+  inline constexpr auto more = [] <typename P> (P p) constexpr noexcept
+  {
+    return disallow_empty (repeat (std::move (p)));
+  };
+
 }
 
 #endif
