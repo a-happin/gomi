@@ -1,7 +1,6 @@
 #ifndef CHINO_NEVER_HPP
 #define CHINO_NEVER_HPP
 #include <utility>
-#include <chino/type_traits/copy_cvref_from.hpp>
 
 namespace chino
 {

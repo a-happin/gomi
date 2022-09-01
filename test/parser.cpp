@@ -39,11 +39,11 @@ namespace lexer
   namespace detail
   {
     inline constexpr auto is_identifier_head = [] (char32_t c) constexpr noexcept {
-      return is_alpha (c) || c == U'_';
+      return c == U'_' || unicode::is_XID_START (c);
     };
-    inline constexpr auto is_identifier_tail = chino::char_utils::is_word;
+    inline constexpr auto is_identifier_tail = unicode::is_XID_CONTINUE;
 
-    inline constexpr auto digits = more (character_if (is_digit));
+    inline constexpr auto digits = more (character_if (ascii::is_digit));
 
     inline constexpr auto identifier = and_ (
       character_if (is_identifier_head),

@@ -1,6 +1,7 @@
 #ifndef CHINO_PARSER_HPP
 #define CHINO_PARSER_HPP
 #include <chino/make_variant.hpp>
+#include <chino/type_traits/copy_cvref_from.hpp>
 #include <tuple>
 #include <optional>
 #include <variant>
