@@ -1,104 +1,161 @@
 #ifndef CHINO_PARSER_UTF8_HPP
 #define CHINO_PARSER_UTF8_HPP
 #include <chino/parser.hpp>
-#include <chino/utf8.hpp>
-#include <chino/utf8/string_reader.hpp>
-#include <chino/char_utils.hpp>
+#include <string_view>
+#include <stdexcept>
 #include <charconv>
 
 namespace chino::parser::utf8
 {
-  using chino::utf8::StringReader;
-
   // --------------------------------
-  // basic parsers
+  // rejoin
   // --------------------------------
-  inline constexpr auto epsilon = [] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
+  namespace operation
   {
-    return result::success {input.as_str ().substr (0, 0)};
-  };
+    inline constexpr auto rejoin = [] (std::u8string_view && lhs, std::u8string_view && rhs) constexpr -> std::u8string_view
+    {
+      if (lhs.end () != rhs.begin ())
+      {
+        throw std::runtime_error {"rejoin failed: 不正なparserが存在します"};
+      }
+      return std::u8string_view {lhs.begin (), rhs.end ()};
+    };
+  }
 
+
+  // --------------------------------
+  // Concept
+  // --------------------------------
+  // ここで定義されるほとんどのパーサーコンビネータが要求するパーサーの引数
+  template <typename I>
+  concept Input = requires (I & input)
+  {
+    requires std::copyable <I>;
+    {input.position ()} -> std::copyable;
+    {input.pointer ()} -> std::same_as <const char8_t *>;
+    {input.as_str ()} -> std::same_as <std::u8string_view>;
+    {input.can_read ()} -> std::same_as <bool>;
+    {input.peek ()} -> std::same_as <char32_t>;
+    {input.next ()};
+  };
 
   // --------------------------------
   // parser combinator
   // --------------------------------
-  using chino::parser::or_;
   using chino::parser::map;
   using chino::parser::flat_map;
   using chino::parser::recover;
+  using chino::parser::or_;
 
+  #if defined (__GNUC__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wpadded"
+  #endif
 
   // --------------------------------
   // 特殊parser combinator
   // --------------------------------
   // and_: (Parser <u8string_view> ...) -> Parser <u8string_view>
-  namespace impl
+  // and_: ((I -> Result <std::u8string_view, Es>) ...) -> I -> Result <std::u8string_view, make_variant <Es ...>>
+  template <Input I>
+  inline constexpr auto and_ = [] <Parser <I> ... Ps> requires (std::same_as <ParserResultT <Ps, I>, std::u8string_view> && ...) (Ps ... ps) constexpr noexcept
   {
-    template <typename E, typename P, typename ... Ps>
-    inline constexpr auto and_ (StringReader & input, const char8_t * begin, const char8_t * end, P && p, Ps && ... ps) -> result::result <std::u8string_view, E>
+    using T = std::u8string_view;
+    using E = make_variant <ParserResultE <Ps, I> ...>;
+    return [... ps = std::move (ps)] (I & input) constexpr noexcept -> result::result <T, E>
     {
-      auto res = std::forward <P> (p) (input);
+      constexpr auto impl = overload
+      {
+        [] <typename U> (auto &&, I &, U && value) constexpr noexcept -> result::result <T, E>
+        {
+          return result::success <T> {std::forward <U> (value)};
+        },
+        [] <typename U, typename P, typename ... Rest> (auto & self, I & i, U && value, P && p, Rest && ... rest) constexpr noexcept -> result::result <T, E>
+        {
+          auto res = std::forward <P> (p) (i);
+          if (is_success (res))
+          {
+            return self (self, i, operation::rejoin (std::forward <U> (value), get_success (std::move (res))), std::forward <Rest> (rest) ...);
+          }
+          else if (is_failure (res))
+          {
+            return result::failure <E> {get_failure (std::move (res))};
+          }
+          else
+          {
+            return {};
+          }
+        },
+      };
+      return impl (impl, input, input.as_str ().substr (0, 0), std::move (ps) ...);
+    };
+  };
+
+
+  // lookahead: (I -> Result <unknown, unknown>) -> I -> Result <std::u8string_view, never>
+  template <std::copyable I>
+  inline constexpr auto lookahead = [] <Parser <I> P> (P p) constexpr noexcept
+  {
+    return [p = std::move (p)] (I & input) constexpr noexcept -> result::result <std::u8string_view, never>
+    {
+      auto backup = input;
+      auto res = std::move (p) (input);
+      input = backup;
       if (is_success (res))
       {
-        auto res_str = get_success (std::move (res));
-        if (end != res_str.data ())
-        {
-          throw std::runtime_error {"rejoin failed: 不正なパーサーが存在します"};
-        }
-
-        if constexpr (sizeof ... (Ps) == 0)
-        {
-          return result::success {std::u8string_view {begin, end + res_str.length ()}};
-        }
-        else
-        {
-          return and_ <E> (input, begin, end + res_str.length (), std::forward <Ps> (ps) ...);
-        }
-      }
-      else if (is_failure (res))
-      {
-        return result::failure <E> {get_failure (std::move (res))};
+        return result::success {input.as_str ().substr (0, 0)};
       }
       else
       {
         return {};
       }
-    }
-  }
-  inline constexpr auto and_ = [] <typename ... Ps> requires (std::same_as <ParserResultT <Ps, StringReader>, std::u8string_view> && ...) (Ps ... ps) constexpr noexcept
-  {
-    return [... ps = std::move (ps)] (StringReader & input) constexpr -> result::result <std::u8string_view, make_variant <ParserResultE <Ps, StringReader> ...>>
-    {
-      return impl::and_ <make_variant <ParserResultE <Ps, StringReader> ...>> (input, input.ptr, input.ptr, std::move (ps) ...);
     };
   };
 
 
-  // optional: (Parser <u8string_view>) -> Parser <u8string_view>
-  inline constexpr auto optional = [] <typename P> requires (std::same_as <ParserResultT <P, StringReader>, std::u8string_view>) (P p) constexpr noexcept
+  // negative_lookahead: (I -> Result <unknown, unknown>) -> I -> Result <std::u8string_view, never>
+  template <std::copyable I>
+  inline constexpr auto negative_lookahead = [] <Parser <I> P> (P p) constexpr noexcept
   {
-    return or_ (std::move (p), epsilon);
+    return [p = std::move (p)] (I & input) constexpr noexcept -> result::result <std::u8string_view, never>
+    {
+      auto backup = input;
+      auto res = std::move (p) (input);
+      input = backup;
+      if (is_success (res))
+      {
+        return {};
+      }
+      else
+      {
+        return result::success {input.as_str ().substr (0, 0)};
+      }
+    };
+  };
+
+  // optional: (I -> Result <std::u8string_view, E>) -> I -> Result <std::u8string_view, E>
+  template <Input I>
+  inline constexpr auto optional = [] <Parser <I> P> requires (std::same_as <ParserResultT <P, I>, std::u8string_view>) (P p) constexpr noexcept
+  {
+    return or_ <I> (std::move (p), and_ <I> ());
   };
 
 
   // repeat: (Parser <u8string_view>) -> Parser <u8string_view>
-  inline constexpr auto repeat = [] <typename P> requires (std::same_as <ParserResultT <P, StringReader>, std::u8string_view>) (P p) constexpr noexcept
+  // repeat: (I -> Result <std::u8string_view, E>) -> I -> Result <std::u8string_view, E>
+  template <typename I>
+  inline constexpr auto repeat = [] <Parser <I> P> requires (std::same_as <ParserResultT <P, I>, std::u8string_view>) (P p, std::size_t min = 0, std::size_t max = -1zu) constexpr noexcept
   {
-    return [p = std::move (p)] (StringReader & input) constexpr -> result::result <std::u8string_view, ParserResultE <P, StringReader>>
+    return [p = std::move (p), min, max] (I & input) constexpr -> result::result <std::u8string_view, ParserResultE <P, I>>
     {
-      auto begin = input.ptr;
-      auto end = input.ptr;
-      while (true)
+      auto v = input.as_str ().substr (0, 0);
+      std::size_t i = 0;
+      for (; i < max; ++ i)
       {
         auto res = p (input);
         if (is_success (res))
         {
-          auto res_str = get_success (res);
-          if (end != res_str.data ())
-          {
-            throw std::runtime_error {"rejoin failed: 不正なパーサーが存在します"};
-          }
-          end += res_str.length ();
+          v = operation::rejoin (std::move (v), get_success (std::move (res)));
         }
         else if (is_failure (res))
         {
@@ -109,95 +166,43 @@ namespace chino::parser::utf8
           break;
         }
       }
-      return result::success {std::u8string_view {begin, end}};
+      if (i < min)
+      {
+        return {};
+      }
+      else
+      {
+        return result::success {std::move (v)};
+      }
     };
-  };
-
-
-  // more: (Parser <u8string_view>) -> Parser <u8string_view>
-  inline constexpr auto more = [] <typename P> requires (std::same_as <ParserResultT <P, StringReader>, std::u8string_view>) (P p) constexpr noexcept
-  {
-    return disallow_empty (repeat (std::move (p)));
   };
 
 
   // --------------------------------
   // example parsers
   // --------------------------------
-  inline constexpr auto position = [] (StringReader & input) constexpr noexcept -> result::result <StringReader::Position, never>
+  template <Input I>
+  inline constexpr auto position = [] (I & input) constexpr noexcept -> result::result <std::remove_cvref_t <decltype (input.position ())>, never>
   {
-    return result::success {input.position};
+    return result::success {input.position ()};
   };
 
 
-  inline constexpr auto any_character = [] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
-  {
-    if (input.can_read ())
-    {
-      auto begin = input.ptr;
-      input.next ();
-      return result::success {std::u8string_view {begin, input.ptr}};
-    }
-    return {};
-  };
-
-
-  inline constexpr auto eof = [] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
-  {
-    if (input.can_read ())
-    {
-      return {};
-    }
-    else
-    {
-      return result::success {input.as_str ().substr (0, 0)};
-    }
-  };
-
-
-  inline constexpr auto lookahead_character = [] <typename F> requires requires (F f, chino::utf8::codepoint_t c)
+  template <Input I>
+  inline constexpr auto character_if = [] <typename F>
+  requires requires (F f, char32_t c)
   {
     {f (c)} -> std::same_as <bool>;
   }
   (F f) constexpr noexcept
   {
-    return [f = std::move (f)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
+    return [f = std::move (f)] (I & input) constexpr noexcept -> result::result <std::u8string_view, never>
     {
       if (input.can_read () && f (input.peek ()))
       {
-        return result::success {input.as_str ().substr (0, 0)};
-      }
-      return {};
-    };
-  };
-
-
-  inline constexpr auto negative_lookahead_character = [] <typename F> requires requires (F f, chino::utf8::codepoint_t c)
-  {
-    {f (c)} -> std::same_as <bool>;
-  }
-  (F f) constexpr noexcept
-  {
-    return [f = std::move (f)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
-    {
-      if (input.can_read () && f (input.peek ()))
-      {
-        return {};
-      }
-      return result::success {input.as_str ().substr (0, 0)};
-    };
-  };
-
-
-  inline constexpr auto character = [] (chino::utf8::codepoint_t c) constexpr noexcept
-  {
-    return [c = std::move (c)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
-    {
-      if (input.can_read () && input.peek () == c)
-      {
-        auto begin = input.ptr;
+        auto begin = input.pointer ();
         input.next ();
-        return result::success {std::u8string_view {begin, input.ptr}};
+        return result::success {std::u8string_view {begin, input.pointer ()}};
       }
       else
       {
@@ -206,125 +211,39 @@ namespace chino::parser::utf8
     };
   };
 
+  template <Input I>
+  inline constexpr auto any_character = character_if <I> ([] (auto &&) constexpr noexcept { return true; });
 
-  /* inline constexpr auto character_opt = [] (chino::utf8::codepoint_t c) constexpr noexcept */
-  /* { */
-  /*   return or_ (character (c), epsilon); */
-  /* }; */
+  template <Input I>
+  inline constexpr auto eof = negative_lookahead <I> (any_character <I>);
 
+  template <Input I>
+  inline constexpr auto character = [] (char32_t c) constexpr noexcept
+  {
+    return character_if <I> ([c = std::move (c)] (char32_t x) constexpr noexcept { return x == c; });
+  };
 
-  inline constexpr auto character_if = [] <typename F>
-  requires requires (F f, chino::utf8::codepoint_t c)
+  template <Input I>
+  inline constexpr auto character_unless = [] <typename F>
+  requires requires (F f, char32_t c)
   {
     {f (c)} -> std::same_as <bool>;
   }
   (F f) constexpr noexcept
   {
-    return [f = std::move (f)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
-    {
-      if (input.can_read () && f (input.peek ()))
-      {
-        auto begin = input.ptr;
-        input.next ();
-        return result::success {std::u8string_view {begin, input.ptr}};
-      }
-      return {};
-    };
+    return character_if <I> ([f = std::move (f)] (char32_t x) constexpr noexcept { return not f (x); });
   };
 
 
-  inline constexpr auto character_unless = [] <typename F> requires requires (F f, chino::utf8::codepoint_t c)
-  {
-    {f (c)} -> std::same_as <bool>;
-  }
-  (F f) constexpr noexcept
-  {
-    return [f = std::move (f)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
-    {
-      if (input.can_read () && not f (input.peek ()))
-      {
-        auto begin = input.ptr;
-        input.next ();
-        return result::success {std::u8string_view {begin, input.ptr}};
-      }
-      return {};
-    };
-  };
-
-
-  /* inline constexpr auto characters_while = [] <typename F> */
-  /* requires requires (F f, chino::utf8::codepoint_t c) */
-  /* { */
-  /*   {f (c)} -> std::same_as <bool>; */
-  /* } */
-  /* (F f) constexpr noexcept */
-  /* { */
-  /*   return [f = std::move (f)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never> */
-  /*   { */
-  /*     auto begin = input.ite; */
-  /*     while (input.can_read () && f (input.peek ())) */
-  /*     { */
-  /*       input.next (); */
-  /*     } */
-  /*     return result::success {std::u8string_view {begin, input.ite}}; */
-  /*   }; */
-  /* }; */
-
-
-  /* inline constexpr auto characters_until = [] <typename F> */
-  /* requires requires (F f, chino::utf8::codepoint_t c) */
-  /* { */
-  /*   {f (c)} -> std::same_as <bool>; */
-  /* } */
-  /* (F f) constexpr noexcept */
-  /* { */
-  /*   return [f = std::move (f)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never> */
-  /*   { */
-  /*     auto begin = input.ite; */
-  /*     while (input.can_read () && not f (input.peek ())) */
-  /*     { */
-  /*       input.next (); */
-  /*     } */
-  /*     return result::success {std::u8string_view {begin, input.ite}}; */
-  /*   }; */
-  /* }; */
-
-
-  /* inline constexpr auto characters_more = [] <typename F> */
-  /* requires requires (F f, chino::utf8::codepoint_t c) */
-  /* { */
-  /*   {f (c)} -> std::same_as <bool>; */
-  /* } */
-  /* (F f) constexpr noexcept */
-  /* { */
-  /*   return [f = std::move (f)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never> */
-  /*   { */
-  /*     if (input.can_read () && f (input.peek ())) */
-  /*     { */
-  /*       auto begin = input.ite; */
-  /*       input.next (); */
-  /*       while (input.can_read () && f (input.peek ())) */
-  /*       { */
-  /*         input.next (); */
-  /*       } */
-  /*       return result::success {std::u8string_view {begin, input.ite}}; */
-  /*     } */
-  /*     else */
-  /*     { */
-  /*       return {}; */
-  /*     } */
-  /*   }; */
-  /* }; */
-
-
+  template <Input I>
   inline constexpr auto string = [] (std::u8string_view str) constexpr noexcept
   {
-    return [str = std::move (str)] (StringReader & input) constexpr noexcept -> result::result <std::u8string_view, never>
+    return [str = std::move (str)] (I & input) constexpr noexcept -> result::result <std::u8string_view, never>
     {
       if (auto substr = input.as_str ().substr (0, str.length ()); substr == str)
       {
-        auto end = input.ptr + str.length ();
-        while (input.ptr < end)
+        auto end = input.pointer () + str.length ();
+        while (input.pointer () < end)
         {
           input.next ();
         }
@@ -359,44 +278,15 @@ namespace chino::parser::utf8
   /* }; */
 
 
-  /* inline constexpr auto rejoin = [] <typename T, std::same_as <T> ... Ts> (std::tuple <std::basic_string_view <T>, std::basic_string_view <Ts> ...> && t) constexpr noexcept */
-  /* { */
-  /*   return std::apply ([] (auto && ... xs) constexpr -> result::result <std::basic_string_view <T>, never> */
-  /*   { */
-  /*     std::basic_string_view <T> strs[] = {std::forward <decltype (xs)> (xs) ...}; */
-  /*     for (size_t i = 0; i < sizeof ... (Ts); ++ i) */
-  /*     { */
-  /*       if (strs[i].end () != strs[i + 1].begin ()) */
-  /*       { */
-  /*         throw std::runtime_error {"rejoin failed"}; */
-  /*       } */
-  /*     } */
-  /*     return result::success {std::basic_string_view <T> {strs[0].begin (), strs[sizeof ... (Ts)].end ()}}; */
-  /*   }, std::move (t)); */
-  /* }; */
-
-
-  // tokenize: (Parser <T>) -> Parser <(Position, u8string_view, T)>
-  inline constexpr auto tokenize = [] <typename P> (P p) constexpr noexcept {
-    return [p = std::move (p)] (StringReader & input) constexpr noexcept -> result::result <std::tuple <StringReader::Position, std::u8string_view, ParserResultT <P, StringReader>>, ParserResultE <P, StringReader>>
-    {
-      auto pos = input.position;
-      auto begin = input.ptr;
-      auto res = std::move (p) (input);
-      if (is_success (res))
-      {
-        return result::success {std::tuple {std::move (pos), std::u8string_view {begin, input.ptr}, get_success (std::move (res))}};
-      }
-      else if (is_failure (res))
-      {
-        return as_failure (std::move (res));
-      }
-      else
-      {
-        return {};
-      }
-    };
+  // tokenize: (I -> Result <T, E>) -> I -> Result <(Position, T), E>
+  template <Input I>
+  inline constexpr auto tokenize = [] <Parser <I> P> (P p) constexpr noexcept {
+    return chino::parser::and_ <I> (position <I>, std::move (p));
   };
+
+  #if defined (__GNUC__)
+    #pragma GCC diagnostic pop
+  #endif
 
 
   template <typename T>
@@ -413,5 +303,24 @@ namespace chino::parser::utf8
     }
   };
 }
+
+#define USING_CHINO_PARSER_UTF8_COMBINATORS(I) \
+  inline constexpr auto map                = chino::parser::utf8::map <I>; \
+  inline constexpr auto flat_map           = chino::parser::utf8::flat_map <I>; \
+  inline constexpr auto recover            = chino::parser::utf8::recover <I>; \
+  inline constexpr auto and_               = chino::parser::utf8::and_ <I>; \
+  inline constexpr auto or_                = chino::parser::utf8::or_ <I>; \
+  inline constexpr auto lookahead          = chino::parser::utf8::lookahead <I>; \
+  inline constexpr auto negative_lookahead = chino::parser::utf8::negative_lookahead <I>; \
+  inline constexpr auto optional           = chino::parser::utf8::optional <I>; \
+  inline constexpr auto repeat             = chino::parser::utf8::repeat <I>; \
+  inline constexpr auto position           = chino::parser::utf8::position <I>; \
+  inline constexpr auto character_if       = chino::parser::utf8::character_if <I>; \
+  inline constexpr auto any_character      = chino::parser::utf8::any_character <I>; \
+  inline constexpr auto eof                = chino::parser::utf8::eof <I>; \
+  inline constexpr auto character          = chino::parser::utf8::character <I>; \
+  inline constexpr auto character_unless   = chino::parser::utf8::character_unless <I>; \
+  inline constexpr auto string             = chino::parser::utf8::string <I>; \
+  inline constexpr auto tokenize           = chino::parser::utf8::tokenize <I>
 
 #endif

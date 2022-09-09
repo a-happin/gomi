@@ -1,6 +1,8 @@
 #ifndef CHINO_ANSI_HPP
 #define CHINO_ANSI_HPP
-#include <iostream>
+/* #include <cstdint> */
+/* #include <iosfwd> */
+#include <ios>
 #include <chino/macros/typed_string.hpp>
 
 namespace chino::ansi
@@ -16,7 +18,9 @@ namespace chino::ansi
     friend auto operator << (std::basic_ostream <CharT> & stream, const es_t & x) -> decltype (auto)
     {
       auto flags = stream.flags ();
-      stream << std::dec << std::noshowbase << std::noshowpos << TYPED_STRING (CharT, "\033[");
+      stream.flags (std::ios::dec);
+      /* stream << std::dec << std::noshowbase << std::noshowpos; */
+      stream << TYPED_STRING (CharT, "\033[");
       auto first = x.values;
       auto last = first + N;
       if (first < last) stream << static_cast <int> (* first ++);

@@ -1,6 +1,5 @@
 #ifndef CHINO_OSTREAM_JOIN_HPP
 #define CHINO_OSTREAM_JOIN_HPP
-#include <iostream>
 #include <iterator>
 #include <ranges>
 

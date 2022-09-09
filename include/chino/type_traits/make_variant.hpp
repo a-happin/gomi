@@ -1,5 +1,5 @@
-#ifndef CHINO_MAKE_VARIANT_HPP
-#define CHINO_MAKE_VARIANT_HPP
+#ifndef CHINO_TYPE_TRAITS_MAKE_VARIANT_HPP
+#define CHINO_TYPE_TRAITS_MAKE_VARIANT_HPP
 #include <chino/never.hpp>
 #include <variant>
 

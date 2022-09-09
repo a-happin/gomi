@@ -33,24 +33,34 @@ namespace chino::utf8
       std::size_t line, col;
       friend constexpr auto operator == (const Position &, const Position &) noexcept -> bool = default;
       friend constexpr auto operator <=> (const Position &, const Position &) noexcept -> std::strong_ordering = default;
-    } position;
+    } pos;
 
     constexpr StringReader () noexcept
       : ptr {nullptr}
       , end {nullptr}
-      , position {1, 1}
+      , pos {1, 1}
     {
     }
 
     constexpr StringReader (std::u8string_view str)
       : ptr {str.data ()}
       , end {str.data () + str.length ()}
-      , position {1, 1}
+      , pos {1, 1}
     {
       if (auto p = chino::utf8::find_invalid (str); p != nullptr)
       {
         throw invalid_utf8_error {str.end () - p + 1};
       }
+    }
+
+    constexpr auto position () const noexcept
+    {
+      return pos;
+    }
+
+    constexpr auto pointer () const noexcept
+    {
+      return ptr;
     }
 
     constexpr auto as_str () const noexcept
@@ -73,14 +83,14 @@ namespace chino::utf8
       if (* ptr == u8'\n')
       {
         ++ ptr;
-        ++ position.line;
-        position.col = 1;
+        ++ pos.line;
+        pos.col = 1;
       }
       else if (* ptr == u8'\r')
       {
         ++ ptr;
-        ++ position.line;
-        position.col = 1;
+        ++ pos.line;
+        pos.col = 1;
         if (can_read () && * ptr == u8'\n')
         {
           ++ ptr;
@@ -89,7 +99,7 @@ namespace chino::utf8
       else
       {
         ptr += chino::utf8::char_width (* ptr);
-        ++ position.col;
+        ++ pos.col;
       }
       return * this;
     }

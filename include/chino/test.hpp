@@ -1,6 +1,6 @@
 #ifndef CHINO_TEST_HPP
 #define CHINO_TEST_HPP
-#include <iostream>
+#include <iosfwd>
 #include <experimental/source_location>
 #include <chino/to_string.hpp>
 #include <chino/ansi.hpp>

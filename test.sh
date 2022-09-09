@@ -1,9 +1,9 @@
 #!/bin/sh
 
 f() {
-  clang++ -std=c++2b -Wall -Wextra --pedantic-errors -I./include -I./third-party/iutest/include -O2 -pipe -o /tmp/a.out "$i" || return
+  clang++ -std=c++2b -Weverything -Wno-c++98-compat-pedantic -Wno-c11-extensions -pedantic-errors -I./include -I./third-party/iutest/include -O2 -pipe -o /tmp/a.out "$i" || return
   /tmp/a.out || return
-  g++ -std=c++2b -Wall -Wextra -Wno-deprecated-declarations --pedantic-errors -I./include -I./third-party/iutest/include -O2 -pipe -o /tmp/a.out "$i" || return
+  g++ -std=c++2b -Wall -Wextra -Wno-deprecated-declarations -pedantic-errors -I./include -I./third-party/iutest/include -O2 -pipe -o /tmp/a.out "$i" || return
   /tmp/a.out || return
 }
 

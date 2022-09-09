@@ -6,20 +6,89 @@
 
 namespace chino::char_utils
 {
+  struct Range
+  {
+    char32_t lower;
+    char32_t upper;
+  };
+
+  inline constexpr auto operator < (char32_t c, const Range & range) noexcept
+  {
+    return c < range.lower;
+  }
+  inline constexpr auto operator < (const Range & range, char32_t c) noexcept
+  {
+    return range.upper < c;
+  }
+
+  struct contains
+  {
+    std::span <const Range> sorted_ranges;
+
+    constexpr contains (std::span <const Range> ranges)
+      : sorted_ranges {ranges}
+    {
+      if (not are_ranges_valid ())
+      {
+        throw std::invalid_argument {"Ranges contain invalid ones, or not sorted."};
+      }
+    }
+
+    constexpr auto operator () (char32_t c) const noexcept
+    {
+      return std::binary_search (sorted_ranges.begin (), sorted_ranges.end (), c);
+    }
+
+  private:
+    constexpr auto are_ranges_valid () const noexcept -> bool
+    {
+      char32_t least = 0;
+      for (auto && [lower, upper] : sorted_ranges)
+      {
+        if (not (least <= lower && lower <= upper))
+        {
+          return false;
+        }
+        least = upper + 1;
+      }
+      return true;
+    }
+  };
+
   namespace ascii
   {
-    inline constexpr auto is_blank = [] (char32_t c) constexpr noexcept -> bool
+    namespace ranges
     {
-      return c == U'\t' || c == U' ';
-    };
+      inline constexpr Range blank[] = {
+        {U'\t', U'\t'},
+        {U' ', U' '},
+      };
+      inline constexpr Range white_space[] = {
+        {U'\t', U'\t'},
+        {U'\n', U'\n'},
+        {U'\r', U'\r'},
+        {U' ', U' '},
+      };
+      inline constexpr auto endline = std::span {white_space}.subspan (1, 2);
+      inline constexpr Range alnum[] = {
+        {U'0', U'9'},
+        {U'A', U'Z'},
+        {U'a', U'z'},
+      };
+      inline constexpr auto alpha = std::span {alnum}.subspan (1, 2);
+      inline constexpr Range hex_digit[] = {
+        {U'0', U'9'},
+        {U'A', U'F'},
+        {U'a', U'f'},
+      };
+    }
+
+    inline constexpr auto is_blank = contains {ranges::blank};
     inline constexpr auto is_endline = [] (char32_t c) constexpr noexcept -> bool
     {
       return c == U'\n' || c == U'\r';
     };
-    inline constexpr auto is_whitespace = [] (char32_t c) constexpr noexcept -> bool
-    {
-      return is_blank (c) || is_endline (c);
-    };
+    inline constexpr auto is_white_space = contains {ranges::white_space};
     inline constexpr auto is_digit = [] (char32_t c) constexpr noexcept -> bool
     {
       return U'0' <= c && c <= U'9';
@@ -32,18 +101,9 @@ namespace chino::char_utils
     {
       return U'a' <= c && c <= U'z';
     };
-    inline constexpr auto is_alpha = [] (char32_t c) constexpr noexcept -> bool
-    {
-      return is_upper (c) || is_lower (c);
-    };
-    inline constexpr auto is_alnum = [] (char32_t c) constexpr noexcept -> bool
-    {
-      return is_digit (c) || is_alpha (c);
-    };
-    inline constexpr auto is_xdigit = [] (char32_t c) constexpr noexcept -> bool
-    {
-      return is_digit (c) || (U'A' <= c && c <= U'F') || (U'a' <= c && c <= U'f');
-    };
+    inline constexpr auto is_alpha = contains {ranges::alpha};
+    inline constexpr auto is_alnum = contains {ranges::alnum};
+    inline constexpr auto is_hex_digit = contains {ranges::hex_digit};
     inline constexpr auto is_word = [] (char32_t c) constexpr noexcept -> bool
     {
       return is_alnum (c) || c == U'_';
@@ -52,54 +112,6 @@ namespace chino::char_utils
 
   namespace unicode
   {
-    struct Range
-    {
-      char32_t lower;
-      char32_t upper;
-    };
-
-    inline constexpr auto operator < (char32_t c, const Range & range) noexcept
-    {
-      return c < range.lower;
-    }
-    inline constexpr auto operator < (const Range & range, char32_t c) noexcept
-    {
-      return range.upper < c;
-    }
-
-    struct set
-    {
-      std::span <const Range> sorted_ranges;
-
-      constexpr set (std::span <const Range> ranges)
-        : sorted_ranges {ranges}
-      {
-        if (not are_ranges_valid ())
-        {
-          throw std::invalid_argument {"Ranges contain invalid ones, or not sorted."};
-        }
-      }
-
-      constexpr auto contains (char32_t c) const noexcept
-      {
-        return std::binary_search (sorted_ranges.begin (), sorted_ranges.end (), c);
-      }
-
-    private:
-      constexpr auto are_ranges_valid () const -> bool
-      {
-        char32_t least = 0;
-        for (auto && [lower, upper] : sorted_ranges)
-        {
-          if (not (least <= lower && lower <= upper))
-          {
-            return false;
-          }
-          least = upper + 1;
-        }
-        return true;
-      }
-    };
 
     namespace ranges
     {
@@ -453,22 +465,9 @@ namespace chino::char_utils
         { 0x202F, 0x202F }, { 0x205F, 0x205F }, { 0x3000, 0x3000 }
       };
     }
-    inline constexpr auto XID_START = set {std::span {ranges::XID_START}};
-    inline constexpr auto XID_CONTINUE = set {std::span {ranges::XID_CONTINUE}};
-    inline constexpr auto white_space = set {std::span {ranges::white_space}};
-
-    inline constexpr auto is_XID_START = [] (char32_t c) constexpr noexcept
-    {
-      return XID_START.contains (c);
-    };
-    inline constexpr auto is_XID_CONTINUE = [] (char32_t c) constexpr noexcept
-    {
-      return XID_CONTINUE.contains (c);
-    };
-    inline constexpr auto is_white_space = [] (char32_t c) constexpr noexcept
-    {
-      return white_space.contains (c);
-    };
+    inline constexpr auto is_XID_START = contains {ranges::XID_START};
+    inline constexpr auto is_XID_CONTINUE = contains {ranges::XID_CONTINUE};
+    inline constexpr auto is_white_space = contains {ranges::white_space};
   }
 }
 #endif
