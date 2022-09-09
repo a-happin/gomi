@@ -10,34 +10,34 @@ inline auto test_stringreader ()
   test::assert_eq (reader.as_str (), u8"hoge\n\r\n\rあ\0"sv);
 
   test::assert_eq (reader.peek (), U'h');
-  test::assert_eq (reader.pos, StringReader::Position {1, 1});
+  test::assert_eq (reader.position (), StringReader::Position {1, 1});
   reader.next ();
   test::assert_eq (reader.peek (), U'o');
-  test::assert_eq (reader.pos, StringReader::Position {1, 2});
+  test::assert_eq (reader.position (), StringReader::Position {1, 2});
   reader.next ();
   test::assert_eq (reader.peek (), U'g');
-  test::assert_eq (reader.pos, StringReader::Position {1, 3});
+  test::assert_eq (reader.position (), StringReader::Position {1, 3});
   reader.next ();
   test::assert_eq (reader.peek (), U'e');
-  test::assert_eq (reader.pos, StringReader::Position {1, 4});
+  test::assert_eq (reader.position (), StringReader::Position {1, 4});
   reader.next ();
   test::assert_eq (reader.peek (), U'\n');
-  test::assert_eq (reader.pos, StringReader::Position {1, 5});
+  test::assert_eq (reader.position (), StringReader::Position {1, 5});
   reader.next ();
   test::assert_eq (reader.peek (), U'\r');
-  test::assert_eq (reader.pos, StringReader::Position {2, 1});
+  test::assert_eq (reader.position (), StringReader::Position {2, 1});
   reader.next ();
   test::assert_eq (reader.peek (), U'\r');
-  test::assert_eq (reader.pos, StringReader::Position {3, 1});
+  test::assert_eq (reader.position (), StringReader::Position {3, 1});
   reader.next ();
   test::assert_eq (reader.peek (), U'あ');
-  test::assert_eq (reader.pos, StringReader::Position {4, 1});
+  test::assert_eq (reader.position (), StringReader::Position {4, 1});
   reader.next ();
   test::assert_eq (reader.peek (), U'\0');
-  test::assert_eq (reader.pos, StringReader::Position {4, 2});
+  test::assert_eq (reader.position (), StringReader::Position {4, 2});
   reader.next ();
   test::assert_eq (reader.can_read (), false);
-  test::assert_eq (reader.pos, StringReader::Position {4, 3});
+  test::assert_eq (reader.position (), StringReader::Position {4, 3});
 
   test::expect_exception <chino::utf8::invalid_utf8_error> ([] () {
     char8_t invalid_str[] = {0xFF, 0};
