@@ -26,15 +26,22 @@ namespace chino::utf8
   struct StringReader
   {
     using pointer_t = const char8_t *;
-
-    pointer_t ptr, end;
     struct Position
     {
       std::size_t line, col;
       friend constexpr auto operator == (const Position &, const Position &) noexcept -> bool = default;
       friend constexpr auto operator <=> (const Position &, const Position &) noexcept -> std::strong_ordering = default;
-    } pos;
+      friend auto operator << (std::ostream & stream, const Position & pos_) -> decltype (auto)
+      {
+        return stream << "(line = " << pos_.line << ", col = " << pos_.col << ")";
+      }
+    };
 
+  private:
+    pointer_t ptr, end;
+    Position pos;
+
+  public:
     constexpr StringReader () noexcept
       : ptr {nullptr}
       , end {nullptr}

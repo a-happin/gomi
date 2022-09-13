@@ -44,7 +44,7 @@ namespace chino::parser::utf8
   // --------------------------------
   using chino::parser::map;
   using chino::parser::flat_map;
-  using chino::parser::recover;
+  using chino::parser::catch_error;
   using chino::parser::or_;
 
   #if defined (__GNUC__)
@@ -307,7 +307,7 @@ namespace chino::parser::utf8
 #define USING_CHINO_PARSER_UTF8_COMBINATORS(I) \
   inline constexpr auto map                = chino::parser::utf8::map <I>; \
   inline constexpr auto flat_map           = chino::parser::utf8::flat_map <I>; \
-  inline constexpr auto recover            = chino::parser::utf8::recover <I>; \
+  inline constexpr auto catch_error        = chino::parser::utf8::catch_error <I>; \
   inline constexpr auto and_               = chino::parser::utf8::and_ <I>; \
   inline constexpr auto or_                = chino::parser::utf8::or_ <I>; \
   inline constexpr auto lookahead          = chino::parser::utf8::lookahead <I>; \

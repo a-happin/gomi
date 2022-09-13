@@ -14,11 +14,7 @@ namespace chino::parser
   using ParserResultE = result::failure_type <std::invoke_result_t <P, I &>>;
 
   template <typename P, typename I>
-  concept Parser = requires
-  {
-    typename ParserResultT <P, I>;
-    typename ParserResultE <P, I>;
-  };
+  concept Parser = result::Result <std::invoke_result_t <P, I &>>;
 
   // --------------------------------
   //  parser combinators
@@ -28,10 +24,14 @@ namespace chino::parser
     #pragma GCC diagnostic ignored "-Wpadded"
   #endif
 
+  /* template <typename T> */
+  /* concept is_not_void = not std::same_as <T, void>; */
+
   // map: (I -> Result <T, E>, T -> U) -> I -> Result <U, E>
   template <typename I>
   inline constexpr auto map = [] <Parser <I> P, typename F> (P p, F f) constexpr noexcept
   {
+    static_assert (requires {typename std::invoke_result_t <F, ParserResultT <P, I>>;});
     return [p = std::move (p), f = std::move (f)] (I & input) constexpr noexcept
     {
       return result::map (std::move (p) (input), std::move (f));
@@ -43,36 +43,28 @@ namespace chino::parser
   template <typename I>
   inline constexpr auto flat_map = [] <Parser <I> P, typename F> (P p, F f) constexpr noexcept
   {
+    /* using R = std::invoke_result_t <F, ParserResultT <P, I>, I &>; */
+    static_assert (result::Result <std::invoke_result_t <F, ParserResultT <P, I>, I &>>);
+    /* using T = result::success_type <R>; */
+    /* using E = make_variant <ParserResultE <P, I>, result::failure_type <R>>; */
     return [p = std::move (p), f = std::move (f)] (I & input) constexpr noexcept
     {
-      return result::and_then (std::move (p) (input), std::move (f));
+      return result::and_then (std::move (p) (input), [f = std::move (f), &input] <typename R> (R && res) constexpr noexcept { return std::move (f) (std::forward <R> (res), input); });
     };
   };
 
 
   // failureのflat_map
-  // recover: (I -> Result <T, E>, E -> Result <U, E2>) -> I -> Result <T | U, E2>
+  // catch_error: (I -> Result <T, E>, E -> Result <U, E2>) -> I -> Result <T | U, E2>
   template <typename I>
-  inline constexpr auto recover = [] <Parser <I> P, typename F> (P p, F f) constexpr noexcept
+  inline constexpr auto catch_error = [] <Parser <I> P, typename F> (P p, F f) constexpr noexcept
   {
+    static_assert (result::Result <std::invoke_result_t <F, ParserResultT <P, I>, I &>>);
     return [p = std::move (p), f = std::move (f)] (I & input) constexpr noexcept
     {
-      return result::catch_error (std::move (p) (input), std::move (f));
+      return result::catch_error (std::move (p) (input), [f = std::move (f), &input] <typename R> (R && res) constexpr noexcept { return std::move (f) (std::forward <R> (res), input); });
     };
   };
-
-
-  // raise: (() -> T) -> Parser <never, T>
-  /* inline constexpr auto raise = [] <typename F> requires requires (F f) */
-  /* { */
-  /*   {std::move (f) ()}; */
-  /* } (F f) constexpr noexcept */
-  /* { */
-  /*   return [f = std::move (f)] <typename I> (I &) constexpr noexcept -> result::result <never, std::remove_cvref_t <decltype (std::move (f) ())>> */
-  /*   { */
-  /*     return result::failure {std::move (f) ()}; */
-  /*   }; */
-  /* }; */
 
 
   // and_: ((I -> Result <Ts, Es>) ...) -> I -> Result <std::tuple <Ts ...>, make_variant <Es ...>>
@@ -322,8 +314,9 @@ namespace chino::parser
 #define USING_CHINO_PARSER_COMBINATORS(I) \
   inline constexpr auto map                = chino::parser::map <I>; \
   inline constexpr auto flat_map           = chino::parser::flat_map <I>; \
-  inline constexpr auto recover            = chino::parser::recover <I>; \
+  inline constexpr auto catch_error        = chino::parser::catch_error <I>; \
   inline constexpr auto and_               = chino::parser::and_ <I>; \
+  inline constexpr auto and_with_skip      = chino::parser::and_with_skip <I>; \
   inline constexpr auto or_                = chino::parser::or_ <I>; \
   inline constexpr auto lookahead          = chino::parser::lookahead <I>; \
   inline constexpr auto negative_lookahead = chino::parser::negative_lookahead <I>; \

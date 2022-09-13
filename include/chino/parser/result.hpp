@@ -224,6 +224,37 @@ namespace chino::parser::result
     return (as_failure (std::forward <R> (r)).error);
   }
 
+  template <Result T, Result U> requires (not std::is_reference_v <T>)
+  inline constexpr auto result_cast (U && r) noexcept -> T
+  {
+    if (is_success (r))
+    {
+      if constexpr (std::same_as <success_type <T>, success_type <U>>)
+      {
+        return as_success (std::forward <U> (r));
+      }
+      else
+      {
+        return success <success_type <T>> {get_success (std::forward <U> (r))};
+      }
+    }
+    else if (is_failure (r))
+    {
+      if constexpr (std::same_as <failure_type <T>, failure_type <U>>)
+      {
+        return as_failure (std::forward <U> (r));
+      }
+      else
+      {
+        return failure <failure_type <T>> {get_failure (std::forward <U> (r))};
+      }
+    }
+    else
+    {
+      return {};
+    }
+  }
+
   template <Result R, typename F, typename G, typename H>
   inline constexpr auto match (R && r, F && f, G && g, H && h) noexcept
   {
@@ -247,12 +278,12 @@ namespace chino::parser::result
   }
 
   template <Result R, typename F>
-  inline constexpr auto map (R && r, F && f) noexcept (noexcept (f (get_success (std::forward <R> (r)))))
-  -> result <std::remove_cvref_t <decltype (f (get_success (std::forward <R> (r))))>, failure_type <R>>
+  inline constexpr auto map (R && r, F && f) noexcept (noexcept (std::forward <F> (f) (get_success (std::forward <R> (r)))))
+  -> result <std::invoke_result_t <F, success_type <R>>, failure_type <R>>
   {
     if (is_success (r))
     {
-      return success {f (get_success (std::forward <R> (r)))};
+      return success {std::forward <F> (f) (get_success (std::forward <R> (r)))};
     }
     else if (is_failure (r))
     {
@@ -265,16 +296,25 @@ namespace chino::parser::result
   }
 
   template <Result R, typename F>
-  inline constexpr auto and_then (R && r, F && f) noexcept (noexcept (f (get_success (std::forward <R> (r)))))
-  -> result <success_type <decltype (f (get_success (std::forward <R> (r))))>, make_variant <failure_type <R>, failure_type <decltype (f (get_success (std::forward <R> (r))))>>>
+  inline constexpr auto and_then (R && r, F && f) noexcept (noexcept (std::forward <F> (f) (get_success (std::forward <R> (r)))))
+  -> result <
+    success_type <std::invoke_result_t <F, success_type <R>>>,
+    make_variant <
+      failure_type <R>,
+      failure_type <std::invoke_result_t <F, success_type <R>>>
+    >
+  >
   {
+    using FR = std::invoke_result_t <F, success_type <R>>;
+    using T = success_type <FR>;
+    using E = make_variant <failure_type <R>, failure_type <FR>>;
     if (is_success (r))
     {
-      return f (get_success (std::forward <R> (r)));
+      return result_cast <result <T, E>> (std::forward <F> (f) (get_success (std::forward <R> (r))));
     }
     else if (is_failure (r))
     {
-      return failure <make_variant <failure_type <R>, failure_type <decltype (f (get_success (std::forward <R> (r))))>>> {get_failure (std::forward <R> (r))};
+      return failure <E> {get_failure (std::forward <R> (r))};
     }
     else
     {
@@ -283,16 +323,25 @@ namespace chino::parser::result
   }
 
   template <Result R, typename F>
-  inline constexpr auto catch_error (R && r, F && f) noexcept (noexcept (f (get_failure (std::forward <R> (r)))))
-  -> result <make_variant <success_type <R>, success_type <decltype (f (get_failure (std::forward <R> (r))))>>, failure_type <decltype (f (get_failure (std::forward <R> (r))))>>
+  inline constexpr auto catch_error (R && r, F && f) noexcept (noexcept (std::forward <F> (f) (get_failure (std::forward <R> (r)))))
+  -> result <
+    make_variant <
+      success_type <R>,
+      success_type <std::invoke_result_t <F, failure_type <R>>>
+    >,
+    failure_type <std::invoke_result_t <F, failure_type <R>>>
+  >
   {
+    using FR = std::invoke_result_t <F, failure_type <R>>;
+    using T = make_variant <success_type <R>, success_type <FR>>;
+    using E = failure_type <FR>;
     if (is_success (r))
     {
-      return success <make_variant <success_type <R>, success_type <decltype (f (get_failure (std::forward <R> (r))))>>> {get_success (std::forward <R> (r))};
+      return success <T> {get_success (std::forward <R> (r))};
     }
     else if (is_failure (r))
     {
-      return f (get_failure (std::forward <R> (r)));
+      return result_cast <result <T, E>> (std::forward <F> (f) (get_failure (std::forward <R> (r))));
     }
     else
     {
