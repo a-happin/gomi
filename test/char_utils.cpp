@@ -13,4 +13,10 @@ auto main () -> int
   static_assert (unicode::is_XID_Continue (U'_'));
   static_assert (unicode::is_XID_Continue (U'あ'));
   static_assert (unicode::is_XID_Continue (U'0'));
+
+  static_assert (unicode::is_white_space (U' '));
+  static_assert (unicode::is_white_space (U'\t'));
+  static_assert (unicode::is_white_space (U'\n'));
+  static_assert (unicode::is_white_space (U'\r'));
+  static_assert (unicode::is_white_space (U'　'));
 }
