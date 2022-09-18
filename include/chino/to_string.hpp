@@ -293,9 +293,13 @@ namespace chino
       {
         std::basic_ostringstream <CharT> stream;
         stream << TYPED_STRING (CharT, "{");
-        for (std::size_t idx = 0; auto && [key, value] : arr)
+        for (bool is_first = true; auto && [key, value] : arr)
         {
-          if (idx ++ != 0)
+          if (is_first)
+          {
+            is_first = false;
+          }
+          else
           {
             stream << TYPED_STRING (CharT, ", ");
           }
@@ -325,24 +329,13 @@ namespace chino
       {
         std::basic_ostringstream <CharT> stream;
         stream << TYPED_STRING (CharT, "(");
-        std::apply ([&stream] (auto && ... args) constexpr {
-          if constexpr (sizeof ... (args) > 0)
+        if constexpr (sizeof ... (Args) > 0)
+        {
+          std::apply ([&stream] (auto && x, auto && ... xs) constexpr noexcept
           {
-            auto f = [idx = std::size_t {0}, &stream] (auto && elem) mutable
-            {
-              if (idx == 0)
-              {
-                stream << to_string <CharT> (std::forward <decltype (elem)> (elem));
-                idx = 1;
-              }
-              else
-              {
-                stream << TYPED_STRING (CharT, ", ") << to_string <CharT> (std::forward <decltype (elem)> (elem));
-              }
-            };
-            (f (std::forward <decltype (args)> (args)), ...);
-          }
-        }, t);
+            (static_cast <void> (stream << to_string <CharT> (std::forward <decltype (x)> (x))), ..., static_cast <void> (stream << TYPED_STRING (CharT, ", ") << to_string <CharT> (std::forward <decltype (xs)> (xs))));
+          }, t);
+        }
         stream << TYPED_STRING (CharT, ")");
         return std::move (stream).str ();
       }
