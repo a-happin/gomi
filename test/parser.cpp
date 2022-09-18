@@ -13,12 +13,12 @@
 #include <unordered_map>
 #include <charconv>
 #define FOR_IMPL(i,b,e) for (auto [i, i ## _end] = std::tuple {(b), (e)}; i < i ## _end; ++ i)
-#define FOR(...) FOR_IMPL(__VA_ARGS__)
-#define rep(i,n) FOR(i,0zu,n)
+#define FOR(...) FOR_IMPL (__VA_ARGS__)
+#define rep(i,n) FOR (i, 0zu, n)
 #define ALL(x) std::ranges::begin (x), std::ranges::end (x)
 #define dump(...) std::cout << #__VA_ARGS__ << " = " << (__VA_ARGS__) << "\n"
 #define FORWARD(x) std::forward <decltype (x)> (x)
-#ifndef dump
+#if defined(dump) && defined(rep) && defined(FOR_IMPL) && defined(FOR)
 #endif
 
 inline constexpr auto NaN = std::bit_cast <double> (0x7FF8000000000000);
@@ -66,107 +66,6 @@ inline constexpr auto logical_rshift (T lhs, int rhs) noexcept
   return static_cast <T> (static_cast <std::make_unsigned_t <T>> (lhs) >> rhs);
 }
 static_assert (logical_rshift (std::int32_t {-1}, 1) == 0x7FFFFFFF);
-
-namespace hoge
-{
-#ifdef __GNUC__
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wpadded"
-#endif
-struct JSON : std::variant <std::monostate, bool, double, std::string, std::vector <JSON>, std::unordered_map <std::string, JSON>>
-{
-  using variant::variant;
-
-  friend auto operator << (std::ostream & stream, const JSON & json) -> decltype (auto)
-  {
-    return json.print (stream, 2);
-  }
-
-  auto stringify (std::size_t spacer = 0) const
-  {
-    std::ostringstream ss;
-    print (ss, spacer);
-    return std::move (ss).str ();
-  }
-
-private:
-  auto print (std::ostream & stream, const std::size_t & spacer) const -> std::ostream &
-  {
-    std::size_t indent = 0;
-    auto impl = [&stream, &spacer, &indent] (auto & self, const JSON & json) -> void
-    {
-      std::visit (chino::overload {
-        [&stream] (const std::monostate &) { stream << "null"; },
-        [&stream] (const bool & b) { stream << (b ? "true" : "false"); },
-        [&stream] (const double & val) { stream << val; },
-        [&stream] (const std::string & str) { stream << '"' << str << '"'; },
-        [&self, &stream, &spacer, &indent] (const std::vector <JSON> & arr) noexcept {
-          stream << '[';
-          indent += spacer;
-          for (bool is_first = true; auto && elem : arr)
-          {
-            if (is_first)
-            {
-              is_first = false;
-            }
-            else
-            {
-              stream << ',';
-              if (spacer > 0)
-              {
-                stream << '\n';
-                rep (i, indent)
-                {
-                  stream << ' ';
-                }
-              }
-            }
-            self (self, elem);
-          }
-          indent -= spacer;
-          stream << ']';
-        },
-        [&self, &stream, &spacer, &indent] (const std::unordered_map <std::string, JSON> & object) noexcept {
-          stream << '{';
-          indent += spacer;
-          for (bool is_first = true; auto && [key, value] : object)
-          {
-            if (is_first)
-            {
-              is_first = false;
-            }
-            else
-            {
-              stream << ',';
-              if (spacer > 0)
-              {
-                stream << '\n';
-                rep (i, indent)
-                {
-                  stream << ' ';
-                }
-              }
-            }
-            stream << '"' << key << '"';
-            if (spacer > 0)
-            {
-              stream << ' ';
-            }
-            self (self, value);
-          }
-          indent -= spacer;
-          stream << '}';
-        },
-      }, json);
-    };
-    impl (impl, * this);
-    return stream;
-  }
-};
-#ifdef __GNUC__
-  #pragma GCC diagnostic pop
-#endif
-}
 
 struct Source
 {
@@ -219,117 +118,6 @@ struct StringReader : chino::utf8::StringReader
     return Position {source_ptr, super::position ()};
   }
 };
-
-namespace lexer
-{
-  USING_CHINO_PARSER_UTF8_COMBINATORS (StringReader);
-  using namespace chino::char_utils;
-  namespace result = chino::parser::result;
-
-  inline constexpr auto keyword = [] (std::u8string_view str) constexpr noexcept
-  {
-    return and_ (string (str), negative_lookahead (character_if (unicode::is_XID_Continue)));
-  };
-
-  inline constexpr auto raise = [] (std::string_view message) constexpr noexcept
-  {
-    return [message] (StringReader &) constexpr noexcept
-    {
-      return result::failure {std::string {message}};
-    };
-  };
-
-  inline constexpr auto recover = [] (std::string && message, StringReader & input) -> result::result <chino::never, chino::never>
-  {
-    input.errors_ptr->push_back (StringReader::Error {input.position (), std::move (message)});
-    return {};
-  };
-
-  inline constexpr auto spaces = repeat (character_if (unicode::is_white_space));
-
-  inline constexpr auto wrap_spaces = [] <chino::parser::Parser <StringReader> P> (P p) constexpr noexcept
-  {
-    return map (
-      chino::parser::and_ <StringReader> (spaces, std::move (p), spaces),
-      [] (auto && t) constexpr noexcept { return std::get <1> (FORWARD (t)); }
-    );
-  };
-
-  inline constexpr auto digits = repeat (character_if (ascii::is_digit), 1);
-  inline constexpr auto hex_digits = repeat (character_if (ascii::is_hex_digit), 1);
-
-  inline constexpr auto decimal_exponent = and_ (
-    character_if ([] (char32_t c) constexpr noexcept { return c == U'e' || c == U'E'; }),
-    optional (character_if ([] (char32_t c) constexpr noexcept { return c == U'-' || c == U'+'; })),
-    digits
-  );
-
-  inline constexpr auto floating_point = and_ (
-    optional (character (U'-')),
-    digits,
-    optional (and_ (
-        character (U'.'),
-        digits
-    )),
-    optional (decimal_exponent)
-  );
-
-  inline constexpr Range simple_escape_sequence_characters[] = {
-    {U'\"', U'\"'},
-    {U'\'', U'\''},
-    {U'?', U'?'},
-    {U'\\', U'\\'},
-    {U'a', U'b'},
-    {U'f', U'f'},
-    {U'n', U'n'},
-    {U'r', U'r'},
-    {U't', U't'},
-    {U'v', U'v'},
-  };
-  inline constexpr auto is_simple_escape_sequence_characters = contains {simple_escape_sequence_characters};
-  inline constexpr auto escape_sequence = and_ (
-    character (U'\\'),
-    or_ (
-      character_if (is_simple_escape_sequence_characters),
-      and_ (character (U'u'), repeat (character_if (ascii::is_hex_digit), 4, 4))
-    )
-  );
-  inline constexpr auto quoted_string = [] (char32_t quot) constexpr noexcept {
-    return and_ (
-      character (quot),
-      repeat (
-        or_ (
-          and_ (
-            negative_lookahead (character (U'\\')),
-            negative_lookahead (character (quot)),
-            negative_lookahead (character_if (ascii::is_endline)),
-            any_character
-          ),
-          escape_sequence
-        )
-      ),
-      or_ (
-        character (quot),
-        catch_error (raise ("文字列定数が閉じていません"), recover),
-        and_ ()
-      )
-    );
-  };
-  inline constexpr auto string_literal = wrap_spaces (quoted_string (U'"'));
-
-  inline constexpr auto true_literal = wrap_spaces (keyword (u8"true"));
-  inline constexpr auto false_literal = wrap_spaces (keyword (u8"false"));
-
-  inline constexpr auto null_literal = wrap_spaces (keyword (u8"null"));
-
-  inline constexpr auto bracket_begin = wrap_spaces (character (U'['));
-  inline constexpr auto bracket_end = wrap_spaces (character (U']'));
-
-  inline constexpr auto brace_begin = wrap_spaces (character (U'{'));
-  inline constexpr auto brace_end = wrap_spaces (character (U'}'));
-
-  inline constexpr auto colon = wrap_spaces (character (U':'));
-}
 
 namespace ast
 {
@@ -384,90 +172,198 @@ namespace ast
 
 namespace parser
 {
-  USING_CHINO_PARSER_COMBINATORS (StringReader);
-  using chino::parser::Parser;
-  namespace result = chino::parser::result;
+  using namespace chino::parser;
+  template <typename T>
+  concept Parser = chino::parser::Parser <T, StringReader>;
 
-  inline constexpr auto located = [] <Parser <StringReader> P> (P p) constexpr noexcept
+  inline constexpr auto raise = [] (std::string_view message) constexpr noexcept
   {
-    return map  (
-      and_  (lexer::position, std::move (p), lexer::position),
-      [] (auto && t) constexpr noexcept { auto && [p1, value, p2] = FORWARD (t); return ast::Located {ast::SourceRange {FORWARD (p1), FORWARD (p2)}, FORWARD (value)}; }
-    );
+    return [message] (StringReader &) constexpr noexcept
+    {
+      return result::failure {std::string {message}};
+    };
   };
 
-  inline constexpr auto wrap_spaces = [] <Parser <StringReader> P> (P p) constexpr noexcept
+  inline constexpr auto recover = [] (std::string && message, StringReader & input) -> result::result <chino::never, chino::never>
+  {
+    input.errors_ptr->push_back (StringReader::Error {input.position (), std::move (message)});
+    return {};
+  };
+}
+
+namespace lexer
+{
+  using namespace chino::parser::utf8;
+  using namespace chino::char_utils;
+  namespace result = parser::result;
+  using parser::Parser, parser::raise, parser::recover;
+
+  inline constexpr auto keyword = [] (std::u8string_view str) constexpr noexcept
+  {
+    return and_ (string (str), negative_lookahead (character_if (unicode::is_XID_Continue)));
+  };
+
+  inline constexpr Parser auto spaces = repeat (character_if (unicode::is_white_space));
+
+  inline constexpr auto wrap_spaces = [] <Parser P> (P && p) constexpr noexcept
   {
     return map (
-      and_ (lexer::spaces, std::move (p), lexer::spaces),
+      parser::and_ (spaces, std::forward <P> (p), spaces),
       [] (auto && t) constexpr noexcept { return std::get <1> (FORWARD (t)); }
     );
   };
 
-  inline constexpr auto null_literal = map (
+  inline constexpr Parser auto digits = repeat (character_if (ascii::is_digit), 1);
+  inline constexpr Parser auto hex_digits = repeat (character_if (ascii::is_hex_digit), 1);
+
+  inline constexpr Parser auto decimal_exponent = and_ (
+    character_if ([] (char32_t c) constexpr noexcept { return c == U'e' || c == U'E'; }),
+    optional (character_if ([] (char32_t c) constexpr noexcept { return c == U'-' || c == U'+'; })),
+    digits
+  );
+
+  inline constexpr Parser auto floating_point = and_ (
+    optional (character (U'-')),
+    digits,
+    optional (and_ (
+        character (U'.'),
+        digits
+    )),
+    optional (decimal_exponent)
+  );
+
+  inline constexpr Range simple_escape_sequence_characters[] = {
+    {U'\"', U'\"'},
+    {U'\'', U'\''},
+    {U'?', U'?'},
+    {U'\\', U'\\'},
+    {U'a', U'b'},
+    {U'f', U'f'},
+    {U'n', U'n'},
+    {U'r', U'r'},
+    {U't', U't'},
+    {U'v', U'v'},
+  };
+  inline constexpr auto is_simple_escape_sequence_characters = contains {simple_escape_sequence_characters};
+  inline constexpr Parser auto escape_sequence = and_ (
+    character (U'\\'),
+    or_ (
+      character_if (is_simple_escape_sequence_characters),
+      and_ (character (U'u'), repeat (character_if (ascii::is_hex_digit), 4, 4))
+    )
+  );
+  inline constexpr auto quoted_string = [] (char32_t quot) constexpr noexcept {
+    return and_ (
+      character (quot),
+      repeat (
+        or_ (
+          and_ (
+            negative_lookahead (character (U'\\')),
+            negative_lookahead (character (quot)),
+            negative_lookahead (character_if (ascii::is_endline)),
+            any_character
+          ),
+          escape_sequence
+        )
+      ),
+      or_ (
+        character (quot),
+        catch_error (raise ("文字列定数が閉じていません"), recover),
+        and_ ()
+      )
+    );
+  };
+  inline constexpr Parser auto string_literal = wrap_spaces (quoted_string (U'"'));
+
+  inline constexpr Parser auto true_literal = wrap_spaces (keyword (u8"true"));
+  inline constexpr Parser auto false_literal = wrap_spaces (keyword (u8"false"));
+
+  inline constexpr Parser auto null_literal = wrap_spaces (keyword (u8"null"));
+
+  inline constexpr Parser auto bracket_begin = wrap_spaces (character (U'['));
+  inline constexpr Parser auto bracket_end = wrap_spaces (character (U']'));
+
+  inline constexpr Parser auto brace_begin = wrap_spaces (character (U'{'));
+  inline constexpr Parser auto brace_end = wrap_spaces (character (U'}'));
+
+  inline constexpr Parser auto colon = wrap_spaces (character (U':'));
+  inline constexpr Parser auto comma = wrap_spaces (character (U','));
+}
+
+namespace parser
+{
+  inline constexpr auto located = [] <Parser P> (P && p) constexpr noexcept
+  {
+    return map  (
+      and_  (lexer::position, std::forward <P> (p), lexer::position),
+      [] (auto && t) constexpr noexcept { auto && [p1, value, p2] = FORWARD (t); return ast::Located {ast::SourceRange {FORWARD (p1), FORWARD (p2)}, FORWARD (value)}; }
+    );
+  };
+
+  inline constexpr Parser auto null_literal = map (
     lexer::null_literal,
     [] (auto &&) constexpr noexcept { return std::monostate {}; }
   );
-  static_assert (std::is_same_v <chino::parser::ParserResultT <decltype (null_literal), StringReader>, std::monostate>);
+  static_assert (std::is_same_v <chino::parser::success_type <decltype (null_literal), StringReader>, std::monostate>);
 
-  inline constexpr auto true_literal = map (
+  inline constexpr Parser auto true_literal = map (
     lexer::true_literal,
     [] (auto &&) constexpr noexcept { return true; }
   );
-  static_assert (std::is_same_v <chino::parser::ParserResultT <decltype (true_literal), StringReader>, bool>);
+  static_assert (std::is_same_v <chino::parser::success_type <decltype (true_literal), StringReader>, bool>);
 
-  inline constexpr auto false_literal = map (
+  inline constexpr Parser auto false_literal = map (
     lexer::false_literal,
     [] (auto &&) constexpr noexcept { return false; }
   );
-  static_assert (std::is_same_v <chino::parser::ParserResultT <decltype (false_literal), StringReader>, bool>);
+  static_assert (std::is_same_v <chino::parser::success_type <decltype (false_literal), StringReader>, bool>);
 
-  inline constexpr auto double_literal = catch_error (
+  inline constexpr Parser auto double_literal = catch_error (
     flat_map (
       lexer::floating_point,
-      [] (std::u8string_view str, StringReader &) constexpr noexcept { return chino::parser::utf8::from_string_view <double> (str); }
+      [] (std::u8string_view str, StringReader &) constexpr noexcept { return lexer::from_string_view <double> (str); }
     ),
     [] (auto &&, StringReader & input) constexpr noexcept
     {
-      lexer::recover (std::string {"double型への変換に失敗しました"}, input);
+      recover (std::string {"double型への変換に失敗しました"}, input);
       return result::success {NaN};
     }
   );
-  static_assert (std::is_same_v <chino::parser::ParserResultT <decltype (double_literal), StringReader>, double>);
+  static_assert (std::is_same_v <chino::parser::success_type <decltype (double_literal), StringReader>, double>);
 
-  inline constexpr auto string_literal = map (
+  inline constexpr Parser auto string_literal = map (
     lexer::string_literal,
     [] (std::u8string_view && str) constexpr noexcept { return std::u8string {FORWARD (str)}; }
   );
-  static_assert (std::is_same_v <chino::parser::ParserResultT <decltype (string_literal), StringReader>, std::u8string>);
+  static_assert (std::is_same_v <chino::parser::success_type <decltype (string_literal), StringReader>, std::u8string>);
 
-  inline constexpr auto json (StringReader &) -> lexer::result::result <ast::JSON, chino::never>;
+  inline constexpr auto json (StringReader &) -> result::result <ast::JSON, chino::never>;
 
-  inline constexpr auto array = map (
+  inline constexpr Parser auto array = map (
     and_ (
       lexer::bracket_begin,
-      repeat (json),
+      separated (json, lexer::comma),
       or_ (
         lexer::bracket_end,
-        catch_error (lexer::raise ("角括弧が閉じていません"), lexer::recover),
+        catch_error (raise ("角括弧が閉じていません"), recover),
         lexer::and_ ()
       )
     ),
     [] (auto && t) constexpr noexcept { return std::get <1> (t); }
   );
-  static_assert (std::is_same_v <chino::parser::ParserResultT <decltype (array), StringReader>, ast::array_t <ast::JSON>>);
+  static_assert (std::is_same_v <chino::parser::success_type <decltype (array), StringReader>, ast::array_t <ast::JSON>>);
 
-  inline constexpr auto object = map (
+  inline constexpr Parser auto object = map (
     and_ (
       lexer::brace_begin,
-      repeat (and_ (
+      separated (and_ (
           lexer::string_literal,
           lexer::colon,
           json
-      )),
+      ), lexer::comma),
       or_ (
         lexer::brace_end,
-        catch_error (lexer::raise ("波括弧が閉じていません"), lexer::recover),
+        catch_error (raise ("波括弧が閉じていません"), recover),
         lexer::and_ ()
       )
     ),
@@ -481,9 +377,9 @@ namespace parser
       return res;
     }
   );
-  static_assert (std::is_same_v <chino::parser::ParserResultT <decltype (object), StringReader>, ast::object_t <ast::JSON>>);
+  static_assert (std::is_same_v <chino::parser::success_type <decltype (object), StringReader>, ast::object_t <ast::JSON>>);
 
-  inline constexpr auto json (StringReader & input) -> lexer::result::result <ast::JSON, chino::never>
+  inline constexpr auto json (StringReader & input) -> result::result <ast::JSON, chino::never>
   {
     return map (
       located (
@@ -509,12 +405,14 @@ auto main () -> int
   std::list <StringReader::Error> errors;
   StringReader input {source, errors};
 
+  std::cout << "parser size = " << sizeof (parser::object) << std::endl;
+
   auto res = parser::map (
     parser::and_ (
-      parser::wrap_spaces (parser::json),
+      lexer::wrap_spaces (parser::json),
       parser::or_ (
         lexer::eof,
-        parser::catch_error (lexer::raise ("余計な文字が含まれています"), lexer::recover)
+        parser::catch_error (parser::raise ("余計な文字が含まれています"), parser::recover)
       )
     ),
     [] (auto && t) constexpr noexcept { return std::get <0> (FORWARD (t)); }

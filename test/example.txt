@@ -1,3 +1,5 @@
 {
-  "hello": 0
-}}
+  "hello": 0,
+  "windows": [,
+  "hoge": 1e+309
+}
