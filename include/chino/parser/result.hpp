@@ -279,7 +279,7 @@ namespace chino::parser::result
 
   template <Result R, typename F>
   inline constexpr auto map (R && r, F && f) noexcept (noexcept (std::forward <F> (f) (get_success (std::forward <R> (r)))))
-  -> result <std::invoke_result_t <F, success_type <R>>, failure_type <R>>
+  -> result <std::remove_cvref_t <std::invoke_result_t <F, success_type <R>>>, failure_type <R>>
   {
     if (is_success (r))
     {

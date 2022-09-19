@@ -25,10 +25,10 @@ namespace chino::parser
   namespace detail
   {
     template <typename T>
-    concept is_empty_and_trivially_copy_constuructible = std::is_empty_v <T> && std::is_trivially_copy_constructible_v <T>;
+    concept is_empty_and_trivially_copy_constructible = std::is_empty_v <T> && std::is_trivially_copy_constructible_v <T>;
 
     template <typename T>
-    using remove_cvref_if_empty = std::conditional_t <is_empty_and_trivially_copy_constuructible <std::remove_cvref_t <T>>, std::remove_cvref_t <T>, T>;
+    using remove_cvref_if_empty = std::conditional_t <is_empty_and_trivially_copy_constructible <std::remove_cvref_t <T>>, std::remove_cvref_t <T>, T>;
 
     template <typename ... Ts>
     inline constexpr auto make_capture (Ts && ... xs) -> std::tuple <remove_cvref_if_empty <Ts> ...>
