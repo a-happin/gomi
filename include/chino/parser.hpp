@@ -209,8 +209,8 @@ namespace chino::parser
 
 
   // repeat: (I -> Result <T, E>) -> I -> Result <std::vector <T>, E>
-  template <std::size_t min = 0, std::size_t max = -1zu, bool reserve = false, typename P>
-  inline constexpr auto repeat (P && p) noexcept
+  template <std::size_t min = 0, std::size_t max = -1zu, bool reserve = false>
+  inline constexpr auto repeat = [] <typename P> (P && p) constexpr noexcept
   {
     return [captured = detail::make_capture (std::forward <P> (p))] <typename I> (I & input) constexpr -> result::make_result3 <std::conditional_t <min == 0, never, result::undefined>, std::vector <success_type <P, I>>, failure_type <P, I>>
     {
@@ -246,7 +246,7 @@ namespace chino::parser
       }
       return result::success {std::move (v)};
     };
-  }
+  };
 
 
   // separated: ((I -> Result <T, E>), (I -> Result <unknown, E2>)) -> I -> Result <std::vector <T>, E | E2>

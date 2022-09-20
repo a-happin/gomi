@@ -114,8 +114,8 @@ namespace chino::parser::utf8
 
 
   // repeat: (I -> Result <std::u8string_view, E>) -> I -> Result <std::u8string_view, E>
-  template <std::size_t min = 0, std::size_t max = -1zu, typename P>
-  inline constexpr auto repeat (P && p) noexcept
+  template <std::size_t min = 0, std::size_t max = -1zu>
+  inline constexpr auto repeat = [] <typename P> (P && p) constexpr noexcept
   {
     return [captured = detail::make_capture (std::forward <P> (p))] <Input I> (I & input) constexpr -> result::make_result3 <std::conditional_t <min == 0, never, result::undefined>, std::u8string_view, failure_type <P, I>>
     {
@@ -147,7 +147,7 @@ namespace chino::parser::utf8
       }
       return result::success {std::move (v)};
     };
-  }
+  };
 
 
   // --------------------------------

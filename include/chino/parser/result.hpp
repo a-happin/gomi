@@ -63,17 +63,17 @@ namespace chino::parser::result
   template <typename>
   struct result_traits;
 
-  template <typename M, typename T, typename E>
-  struct result_traits <result3 <M, T, E>>
+  template <typename U, typename T, typename E>
+  struct result_traits <result3 <U, T, E>>
   {
-    using undefined_type = M;
+    using undefined_type = U;
     using success_type = T;
     using failure_type = E;
 
     template <typename R>
     static constexpr auto is_undefined (const R & r) noexcept
     {
-      return std::holds_alternative <M> (r);
+      return std::holds_alternative <U> (r);
     }
     template <typename R>
     static constexpr auto is_success (const R & r) noexcept
@@ -88,7 +88,7 @@ namespace chino::parser::result
     template <typename R>
     static constexpr auto as_undefined (R && r) noexcept -> decltype (auto)
     {
-      return std::get <M> (std::forward <R> (r));
+      return std::get <U> (std::forward <R> (r));
     }
     template <typename R>
     static constexpr auto as_success (R && r) noexcept -> decltype (auto)

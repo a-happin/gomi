@@ -227,7 +227,7 @@ namespace parser
       return and_ (string (str), negative_lookahead (character_if (unicode::is_XID_Continue)));
     };
 
-    inline constexpr Parser auto spaces = repeat (character_if (unicode::is_white_space));
+    inline constexpr Parser auto spaces = repeat <> (character_if (unicode::is_white_space));
 
     inline constexpr auto wrap_spaces = [] <Parser P> (P && p) constexpr noexcept
     {
@@ -279,7 +279,7 @@ namespace parser
     inline constexpr auto quoted_string = [] (char32_t quot) constexpr noexcept {
       return and_ (
         character (quot),
-        repeat (
+        repeat <> (
           or_ (
             and_ (
               negative_lookahead (character (U'\\')),
