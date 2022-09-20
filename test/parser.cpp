@@ -210,7 +210,7 @@ namespace parser
     };
   };
 
-  inline constexpr auto recover = [] (std::string && message, StringReader & input) -> result::result <chino::never, chino::never>
+  inline constexpr auto recover = [] (std::string && message, StringReader & input) -> result::undefined
   {
     input.errors_ptr->push_back (StringReader::Error {input.position (), std::move (message)});
     return {};
@@ -237,8 +237,8 @@ namespace parser
       );
     };
 
-    inline constexpr Parser auto digits = repeat (character_if (ascii::is_digit), 1);
-    inline constexpr Parser auto hex_digits = repeat (character_if (ascii::is_hex_digit), 1);
+    inline constexpr Parser auto digits = repeat <1> (character_if (ascii::is_digit));
+    inline constexpr Parser auto hex_digits = repeat <1> (character_if (ascii::is_hex_digit));
 
     inline constexpr Parser auto decimal_exponent = and_ (
       character_if ([] (char32_t c) constexpr noexcept { return c == U'e' || c == U'E'; }),
@@ -273,7 +273,7 @@ namespace parser
       character (U'\\'),
       or_ (
         character_if (is_simple_escape_sequence_characters),
-        and_ (character (U'u'), repeat (character_if (ascii::is_hex_digit), 4, 4))
+        and_ (character (U'u'), repeat <4, 4> (character_if (ascii::is_hex_digit)))
       )
     );
     inline constexpr auto quoted_string = [] (char32_t quot) constexpr noexcept {
@@ -359,7 +359,7 @@ namespace parser
   );
   static_assert (std::is_same_v <chino::parser::success_type <decltype (string_literal), StringReader>, std::u8string>);
 
-  inline constexpr auto json (StringReader &) -> result::result <ast::JSON, chino::never>;
+  inline constexpr auto json (StringReader &) -> result::optional <ast::JSON>;
 
   inline constexpr Parser auto array = map (
     and_ (
@@ -401,7 +401,7 @@ namespace parser
   );
   static_assert (std::is_same_v <chino::parser::success_type <decltype (object), StringReader>, ast::object_t <ast::JSON>>);
 
-  inline constexpr auto json (StringReader & input) -> result::result <ast::JSON, chino::never>
+  inline constexpr auto json (StringReader & input) -> result::optional <ast::JSON>
   {
     return map (
       located (

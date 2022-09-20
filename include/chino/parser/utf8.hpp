@@ -56,10 +56,13 @@ namespace chino::parser::utf8
   // and_: ((I -> Result <std::u8string_view, Es>) ...) -> I -> Result <std::u8string_view, make_variant <Es ...>>
   inline constexpr auto and_ = [] <typename ... Ps> (Ps && ... ps) constexpr noexcept
   {
-    return [captured = detail::make_capture (std::forward <Ps> (ps) ...)] <Input I, typename T = std::u8string_view, typename E = make_variant <failure_type <Ps, I> ...>> (I & input) constexpr noexcept -> result::result <T, E>
+    return [captured = detail::make_capture (std::forward <Ps> (ps) ...)] <Input I> (I & input) constexpr noexcept
     {
       static_assert ((std::is_same_v <success_type <Ps, I>, std::u8string_view> && ...));
-      constexpr auto impl = [] <std::size_t i, typename U> (auto & self, I & in, U && value, auto & captured_) constexpr noexcept -> result::result <T, E>
+      using Undefined = make_variant <undefined_type <Ps, I> ...>;
+      using T = std::u8string_view;
+      using E = make_variant <failure_type <Ps, I> ...>;
+      constexpr auto impl = [] <std::size_t i, typename U> (auto & self, I & in, U && value, auto & captured_) constexpr noexcept -> result::make_result3 <Undefined, T, E>
       {
         if constexpr (i < sizeof ... (Ps))
         {
@@ -73,7 +76,7 @@ namespace chino::parser::utf8
           }
           else
           {
-            return {};
+            return as_undefined (res);
           }
         }
         else
@@ -89,7 +92,7 @@ namespace chino::parser::utf8
   // negative_lookahead: (I -> Result <unknown, unknown>) -> I -> Result <std::u8string_view, never>
   inline constexpr auto negative_lookahead = [] <typename P> (P && p) constexpr noexcept
   {
-    return [captured = detail::make_capture (std::forward <P> (p))] <std::copyable I> requires Parser <P, I> (I & input) constexpr noexcept -> result::result <std::u8string_view, never>
+    return [captured = detail::make_capture (std::forward <P> (p))] <std::copyable I> requires Parser <P, I> (I & input) constexpr noexcept -> result::optional <std::u8string_view>
     {
       auto dummy = input;
       if (auto res = std::get <0> (captured) (dummy); is_success (res))
@@ -111,15 +114,16 @@ namespace chino::parser::utf8
 
 
   // repeat: (I -> Result <std::u8string_view, E>) -> I -> Result <std::u8string_view, E>
-  inline constexpr auto repeat = [] <typename P> (P && p, std::size_t min = 0, std::size_t max = -1zu) constexpr noexcept
+  template <std::size_t min = 0, std::size_t max = -1zu, typename P>
+  inline constexpr auto repeat (P && p) noexcept
   {
-    return [captured = detail::make_capture (std::forward <P> (p), std::move (min), std::move (max))] <Input I> (I & input) constexpr -> result::result <std::u8string_view, failure_type <P, I>>
+    return [captured = detail::make_capture (std::forward <P> (p))] <Input I> (I & input) constexpr -> result::make_result3 <std::conditional_t <min == 0, never, result::undefined>, std::u8string_view, failure_type <P, I>>
     {
-      auto & [p_, min_, max_] = captured;
+      auto & [p_] = captured;
       static_assert (std::same_as <success_type <P, I>, std::u8string_view>);
       auto v = input.as_str ().substr (0, 0);
       std::size_t i = 0;
-      for (; i < max_; ++ i)
+      for (; i < max; ++ i)
       {
         if (auto res = p_ (input); is_success (res))
         {
@@ -134,16 +138,16 @@ namespace chino::parser::utf8
           break;
         }
       }
-      if (i < min_)
+      if constexpr (min > 0)
       {
-        return {};
+        if (i < min)
+        {
+          return {};
+        }
       }
-      else
-      {
-        return result::success {std::move (v)};
-      }
+      return result::success {std::move (v)};
     };
-  };
+  }
 
 
   // --------------------------------
@@ -155,14 +159,9 @@ namespace chino::parser::utf8
   };
 
 
-  inline constexpr auto character_if = [] <typename F>
-  requires requires (F && f, char32_t c)
+  inline constexpr auto character_if = [] <std::predicate <char32_t> F> (F && f) constexpr noexcept
   {
-    {f (c)} -> std::same_as <bool>;
-  }
-  (F && f) constexpr noexcept
-  {
-    return [captured = detail::make_capture (std::forward <F> (f))] <Input I> (I & input) constexpr noexcept -> result::result <std::u8string_view, never>
+    return [captured = detail::make_capture (std::forward <F> (f))] <Input I> (I & input) constexpr noexcept -> result::optional <std::u8string_view>
     {
       if (input.can_read () && std::get <0> (captured) (input.peek ()))
       {
@@ -186,12 +185,7 @@ namespace chino::parser::utf8
     return character_if ([c = std::move (c)] (char32_t x) constexpr noexcept { return x == c; });
   };
 
-  inline constexpr auto character_unless = [] <typename F>
-  requires requires (F && f, char32_t c)
-  {
-    {f (c)} -> std::same_as <bool>;
-  }
-  (F && f) constexpr noexcept
+  inline constexpr auto character_unless = [] <std::predicate <char32_t> F> (F && f) constexpr noexcept
   {
     return character_if ([captured = detail::make_capture (std::forward <F> (f))] (char32_t x) constexpr noexcept { return not std::get <0> (captured) (x); });
   };
@@ -199,7 +193,7 @@ namespace chino::parser::utf8
 
   inline constexpr auto string = [] (std::u8string_view str) constexpr noexcept
   {
-    return [str = std::move (str)] <Input I> (I & input) constexpr noexcept -> result::result <std::u8string_view, never>
+    return [str = std::move (str)] <Input I> (I & input) constexpr noexcept -> result::optional <std::u8string_view>
     {
       if (auto substr = input.as_str ().substr (0, str.length ()); substr == str)
       {
@@ -240,7 +234,7 @@ namespace chino::parser::utf8
 
 
   template <typename T>
-  inline constexpr auto from_string_view = [] (std::u8string_view str) -> result::result <T, std::errc>
+  inline constexpr auto from_string_view = [] (std::u8string_view str) noexcept -> result::result2 <T, std::errc>
   {
     T value;
     if (auto [ptr, errc] = std::from_chars (reinterpret_cast <const char *> (str.data ()), reinterpret_cast <const char *> (str.data () + str.length ()), value); errc == std::errc {})

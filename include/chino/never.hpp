@@ -17,19 +17,27 @@ namespace chino
   {
     constexpr never () noexcept = delete;
 
-    template <typename T>
-    [[noreturn]] operator T & () const & noexcept
+    template <typename T> requires (not std::is_reference_v <T>)
+    [[noreturn]] constexpr operator T () const noexcept
     {
       std_unreachable ();
     }
+
     template <typename T>
-    [[noreturn]] operator T && () const && noexcept
+    [[noreturn]] constexpr operator T & () const noexcept
+    {
+      std_unreachable ();
+    }
+
+    template <typename T>
+    [[noreturn]] constexpr operator T && () const noexcept
     {
       std_unreachable ();
     }
   };
 
-  [[noreturn]] inline auto unreachable () noexcept -> never
+  template <typename T = never>
+  [[noreturn]] inline constexpr auto unreachable () noexcept -> T
   {
     std_unreachable ();
   }
