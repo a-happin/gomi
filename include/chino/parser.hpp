@@ -35,7 +35,7 @@ namespace chino::parser
     using remove_cvref_if_empty = std::conditional_t <is_empty_and_trivially_copy_constructible <std::remove_cvref_t <T>>, std::remove_cvref_t <T>, T>;
 
     template <typename ... Ts>
-    inline constexpr auto make_capture (Ts && ... xs) -> std::tuple <remove_cvref_if_empty <Ts> ...>
+    inline constexpr auto make_capture (Ts && ... xs) noexcept
     {
       return std::tuple <remove_cvref_if_empty <Ts> ...> {std::forward <Ts> (xs) ...};
     }
