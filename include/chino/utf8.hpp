@@ -4,7 +4,7 @@
 #include <string_view>
 #include <cstring> // std::memcpy
 #include <optional>
-#include <ostream>
+#include <iosfwd>
 
 namespace chino::utf8
 {
@@ -45,8 +45,6 @@ namespace chino::utf8
   {
     return static_cast <std::int8_t> (c) < -64;
   }
-
-  struct valid_u8string_view;
 
 
   // ********************************
@@ -247,7 +245,6 @@ namespace chino::utf8
     return nullptr;
   }
 
-
   struct codepoint_iterator
   {
     using difference_type = std::ptrdiff_t;
@@ -294,201 +291,6 @@ namespace chino::utf8
     }
   };
   static_assert (std::forward_iterator <codepoint_iterator>);
-
-
-  // 使い勝手が微妙に悪い
-  struct [[deprecated ("これいる？")]] valid_u8string_view
-  {
-  private:
-    std::u8string_view str;
-  public:
-
-    constexpr valid_u8string_view () noexcept
-      : str {}
-    {}
-
-    explicit constexpr valid_u8string_view (std::u8string_view str_) noexcept
-      : str {std::move (str_)}
-    {}
-
-    constexpr auto begin () const noexcept
-    {
-      return str.begin ();
-    }
-    constexpr auto end () const noexcept
-    {
-      return str.end ();
-    }
-    constexpr auto cbegin () const noexcept
-    {
-      return str.cbegin ();
-    }
-    constexpr auto cend () const noexcept
-    {
-      return str.cend ();
-    }
-    constexpr auto rbegin () const noexcept
-    {
-      return str.rbegin ();
-    }
-    constexpr auto rend () const noexcept
-    {
-      return str.rend ();
-    }
-    constexpr auto crbegin () const noexcept
-    {
-      return str.crbegin ();
-    }
-    constexpr auto crend () const noexcept
-    {
-      return str.crend ();
-    }
-    constexpr auto begin_as_codepoint_iterator () const noexcept
-    {
-      return codepoint_iterator {str.data ()};
-    }
-    constexpr auto end_as_codepoint_iterator () const noexcept
-    {
-      return codepoint_iterator {str.data () + str.length ()};
-    }
-
-    constexpr auto size_in_bytes () const noexcept
-    {
-      return str.size ();
-    }
-    constexpr auto length_in_bytes () const noexcept
-    {
-      return str.length ();
-    }
-    [[deprecated]] constexpr auto length_in_chars () const noexcept
-    {
-      std::size_t res = 0;
-      for (auto ite = begin_as_codepoint_iterator (), ite_end = end_as_codepoint_iterator (); ite < ite_end; ++ ite) ++ res;
-      return res;
-    }
-    [[deprecated]] constexpr auto size_in_chars () const noexcept
-    {
-      return length_in_chars ();
-    }
-    constexpr auto max_size () const noexcept
-    {
-      return str.max_size ();
-    }
-    constexpr auto empty () const noexcept
-    {
-      return str.empty ();
-    }
-
-    constexpr auto front_as_string () const noexcept
-    {
-      return str.substr (0, char_width (str[0]));
-    }
-    constexpr auto front_as_codepoint () const noexcept
-    {
-      return unsafe_codepoint (str);
-    }
-    constexpr auto data () const noexcept
-    {
-      return str.data ();
-    }
-
-    constexpr auto remove_prefix_in_bytes (std::size_t n) -> valid_u8string_view &
-    {
-      if (0 < n && n < str.length () && is_subsequent (str[n]))
-      {
-        throw std::runtime_error {"invalid_utf8_error"};
-      }
-      str.remove_prefix (n);
-      return * this;
-    }
-    constexpr auto remove_suffix_in_bytes (std::size_t n) -> valid_u8string_view &
-    {
-      if (0 < n && n < str.length () && is_subsequent (str[str.length () - n]))
-      {
-        throw std::runtime_error {"invalid_utf8_error"};
-      }
-      str.remove_suffix (n);
-      return * this;
-    }
-    constexpr auto remove_prefix_1char () noexcept -> valid_u8string_view &
-    {
-      str.remove_prefix (char_width (str[0]));
-      return * this;
-    }
-    constexpr auto swap (valid_u8string_view & s) noexcept
-    {
-      return str.swap (s.str);
-    }
-
-    constexpr auto copy (char8_t * s, std::size_t n, std::size_t pos = 0) const
-    {
-      return str.copy (s, n, pos);
-    }
-    constexpr auto substr_in_bytes (std::size_t pos = 0, std::size_t n = std::u8string_view::npos) const
-    {
-      return valid_u8string_view {* this}.remove_prefix_in_bytes (pos).remove_suffix_in_bytes (std::max (str.length () - pos, n) - n);
-      // copyof (str).remove_prefix (pos).remove_suffix (str.length () - pos < n ? 0 : str.length () - pos - n)
-    }
-    constexpr auto starts_with (std::u8string_view str_) const noexcept
-    {
-      return str.starts_with (str_);
-    }
-    constexpr auto ends_with (std::u8string_view str_) const noexcept
-    {
-      return str.ends_with (str_);
-    }
-    constexpr auto contains (std::u8string_view str_) const noexcept
-    {
-      return str.contains (str_);
-    }
-    /* constexpr auto starts_with (std::u32string_view str_) const noexcept */
-    /* { */
-    /*   for (auto ite = begin_as_codepoint_iterator (), ite_end = end_as_codepoint_iterator (); auto && elem : str_) */
-    /*   { */
-    /*     if (not (ite < ite_end)) */
-    /*     { */
-    /*       return false; */
-    /*     } */
-    /*     if (* ite != elem) */
-    /*     { */
-    /*       return false; */
-    /*     } */
-    /*     ++ ite; */
-    /*   } */
-    /*   return true; */
-    /* } */
-
-    friend constexpr auto operator == (const valid_u8string_view &, const valid_u8string_view &) noexcept -> bool = default;
-    friend constexpr auto operator <=> (const valid_u8string_view &, const valid_u8string_view &) noexcept -> std::strong_ordering = default;
-  };
-
-  inline namespace literals
-  {
-    inline namespace valid_u8string_view_lietals
-    {
-      [[deprecated]]
-      inline constexpr auto operator ""_sv (const char8_t * str, std::size_t n) noexcept -> valid_u8string_view
-      {
-        return valid_u8string_view {std::u8string_view {str, n}};
-      }
-    }
-  }
-
-  [[deprecated]]
-  inline constexpr auto validate (std::u8string_view str) noexcept -> std::optional <valid_u8string_view>
-  {
-    if (auto pos = find_invalid (str); pos != nullptr)
-    {
-      return std::nullopt;
-    }
-    return valid_u8string_view {str};
-  }
-
-  [[deprecated]]
-  inline constexpr auto codepoint (valid_u8string_view str) noexcept -> codepoint_t
-  {
-    return str.front_as_codepoint ();
-  }
 }
 
 #endif

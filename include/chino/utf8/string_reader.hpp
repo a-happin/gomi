@@ -1,23 +1,14 @@
 #ifndef CHINO_UTF8_STRING_READER_HPP
 #define CHINO_UTF8_STRING_READER_HPP
+#include <chino/utf8.hpp>
 #include <stdexcept>
 #include <sstream>
-#include <chino/utf8.hpp>
 
 namespace chino::utf8
 {
   struct invalid_utf8_error : std::runtime_error
   {
-    invalid_utf8_error (std::ptrdiff_t pos)
-      : std::runtime_error {
-        [&] () {
-          std::ostringstream ss;
-          ss << "UTF-8として不正な文字列です\n" << pos << "バイト目に不明なバイト列を検出しました";
-          return std::move (ss).str ();
-        } ()
-      }
-    {
-    }
+    using runtime_error::runtime_error;
     ~ invalid_utf8_error () noexcept override;
   };
   // TODO: 外に出す
@@ -49,14 +40,21 @@ namespace chino::utf8
     {
     }
 
-    constexpr StringReader (std::u8string_view str)
+    template <typename F> requires std::same_as <std::invoke_result_t <F, std::u8string_view>, std::u8string_view>
+    explicit constexpr StringReader (std::u8string_view str, F && recover = [] (std::u8string_view valid_str) -> std::u8string_view
+    {
+      std::ostringstream ss;
+      ss << "UTF-8として不正な文字列です。" << (valid_str.size () + 1) << "バイト目に不明なバイト列を検出しました";
+      throw invalid_utf8_error {std::move (ss).str ()};
+    }) noexcept (noexcept (recover (str)))
       : ptr {str.data ()}
       , end {str.data () + str.length ()}
       , pos {1, 1}
     {
       if (auto p = chino::utf8::find_invalid (str); p != nullptr)
       {
-        throw invalid_utf8_error {str.end () - p + 1};
+        auto recovered_str = recover (std::u8string_view {str.data (), p});
+        std::tie (ptr, end) = std::tuple {recovered_str.data (), recovered_str.data () + recovered_str.length ()};
       }
     }
 
