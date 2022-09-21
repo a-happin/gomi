@@ -185,17 +185,21 @@ namespace chino
       template <typename Arr>
       requires requires (const Arr & arr)
       {
-        std::ranges::begin (arr);
-        std::ranges::end (arr);
+        {std::ranges::begin (arr)};
+        {std::ranges::end (arr)};
       }
       static auto impl (const Arr & arr) -> std::basic_string <CharT>
       {
         std::basic_ostringstream <CharT> stream;
         stream << TYPED_STRING (CharT, "[");
-        auto ite = std::ranges::begin (arr);
-        auto last = std::ranges::end (arr);
-        if (ite != last) stream << to_string <CharT> (* ite ++);
-        while (ite != last) stream << TYPED_STRING (CharT, ", ") << to_string <CharT> (* ite ++);
+        if (auto [ite, last] = std::tuple {std::ranges::begin (arr), std::ranges::end (arr)}; ite != last)
+        {
+          stream << to_string <CharT> (* ite);
+          while (++ ite != last)
+          {
+            stream << TYPED_STRING (CharT, ", ") << to_string <CharT> (* ite);
+          }
+        }
         stream << TYPED_STRING (CharT, "]");
         return std::move (stream).str ();
       }
@@ -249,20 +253,20 @@ namespace chino
       template <typename Arr>
       requires requires (const Arr & arr)
       {
-        std::ranges::begin (arr);
-        std::ranges::end (arr);
+        {std::ranges::begin (arr)};
+        {std::ranges::end (arr)};
       }
       static auto impl (const Arr & arr) -> std::basic_string <CharT>
       {
         std::basic_ostringstream <CharT> stream;
         stream << TYPED_STRING (CharT, "{");
-        for (std::size_t idx = 0; auto && elem : arr)
+        if (auto [ite, last] = std::tuple {std::ranges::begin (arr), std::ranges::end (arr)}; ite != last)
         {
-          if (idx ++ != 0)
+          stream << to_string <CharT> (* ite);
+          while (++ ite != last)
           {
-            stream << TYPED_STRING (CharT, ", ");
+            stream << TYPED_STRING (CharT, ", ") << to_string <CharT> (* ite);
           }
-          stream << to_string <CharT> (elem);
         }
         stream << TYPED_STRING (CharT, "}");
         return std::move (stream).str ();
@@ -286,24 +290,25 @@ namespace chino
       template <typename Arr>
       requires requires (const Arr & arr)
       {
-        std::ranges::begin (arr);
-        std::ranges::end (arr);
+        {std::ranges::begin (arr)};
+        {std::ranges::end (arr)};
       }
       static auto impl (const Arr & arr) -> std::basic_string <CharT>
       {
         std::basic_ostringstream <CharT> stream;
         stream << TYPED_STRING (CharT, "{");
-        for (bool is_first = true; auto && [key, value] : arr)
+        constexpr auto f = [] (std::ostream & out, const auto & elem) constexpr noexcept
         {
-          if (is_first)
+          auto && [key, value] = elem;
+          out << to_string <CharT> (key) << TYPED_STRING (CharT, ": ") << to_string <CharT> (value);
+        };
+        if (auto [ite, last] = std::tuple {std::ranges::begin (arr), std::ranges::end (arr)}; ite != last)
+        {
+          f (stream, * ite);
+          while (++ ite != last)
           {
-            is_first = false;
+            f (stream << TYPED_STRING (CharT, ", "), * ite);
           }
-          else
-          {
-            stream << TYPED_STRING (CharT, ", ");
-          }
-          stream << to_string <CharT> (key) << TYPED_STRING (CharT, ": ") << to_string <CharT> (value);
         }
         stream << TYPED_STRING (CharT, "}");
         return std::move (stream).str ();
