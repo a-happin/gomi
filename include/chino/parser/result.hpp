@@ -553,7 +553,7 @@ namespace chino::parser::result
   -> result3 <
     make_variant <
       undefined_type <R>,
-      undefined_type <std::invoke_result_t <F, success_type <R>>>
+      undefined_type <std::invoke_result_t <F, failure_type <R>>>
     >,
     make_variant <
       success_type <R>,
