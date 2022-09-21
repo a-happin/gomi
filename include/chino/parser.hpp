@@ -89,7 +89,7 @@ namespace chino::parser
       using Undefined = make_variant <undefined_type <Ps, I> ...>;
       using T = std::tuple <success_type <Ps, I> ...>;
       using E = make_variant <failure_type <Ps, I> ...>;
-      constexpr auto impl = [] <std::size_t i, typename U> (auto & self, I & in, U && value, auto & captured_) constexpr noexcept -> result::make_result3 <Undefined, T, E>
+      constexpr auto impl = [] <std::size_t i, typename U> (auto & self, I & in, U && value, auto & captured_) constexpr noexcept -> result::result3 <Undefined, T, E>
       {
         if constexpr (i < sizeof ... (Ps))
         {
@@ -124,7 +124,7 @@ namespace chino::parser
       using Undefined = detail::last_t <result::undefined, undefined_type <Ps, I> ...>;
       using T = make_variant <success_type <Ps, I> ...>;
       using E = make_variant <failure_type <Ps, I> ...>;
-      constexpr auto impl = [] <std::size_t i> (auto && self, I & in, const I & backup, auto & captured_) constexpr noexcept -> result::make_result3 <Undefined, T, E>
+      constexpr auto impl = [] <std::size_t i> (auto && self, I & in, const I & backup, auto & captured_) constexpr noexcept -> result::result3 <Undefined, T, E>
       {
         if constexpr (i < sizeof ... (Ps))
         {
@@ -190,7 +190,7 @@ namespace chino::parser
   // optional: (I -> Result <T, E>) -> I -> Result <std::optional <T>, E>
   inline constexpr auto optional = [] <typename P> (P && p) constexpr noexcept
   {
-    return [captured = detail::make_capture (std::forward <P> (p))] <std::copyable I> (I & input) constexpr noexcept -> result::make_result2 <std::optional <success_type <P, I>>, failure_type <P, I>>
+    return [captured = detail::make_capture (std::forward <P> (p))] <std::copyable I> (I & input) constexpr noexcept -> result::result2 <std::optional <success_type <P, I>>, failure_type <P, I>>
     {
       if (auto res = std::get <0> (captured) (input); is_success (res))
       {
@@ -212,7 +212,7 @@ namespace chino::parser
   template <std::size_t min = 0, std::size_t max = -1zu, bool reserve = false>
   inline constexpr auto repeat = [] <typename P> (P && p) constexpr noexcept
   {
-    return [captured = detail::make_capture (std::forward <P> (p))] <typename I> (I & input) constexpr -> result::make_result3 <std::conditional_t <min == 0, never, result::undefined>, std::vector <success_type <P, I>>, failure_type <P, I>>
+    return [captured = detail::make_capture (std::forward <P> (p))] <typename I> (I & input) constexpr -> result::result3 <std::conditional_t <min == 0, never, result::undefined>, std::vector <success_type <P, I>>, failure_type <P, I>>
     {
       auto & [p_] = captured;
       std::vector <success_type <P, I>> v;
@@ -252,7 +252,7 @@ namespace chino::parser
   // separated: ((I -> Result <T, E>), (I -> Result <unknown, E2>)) -> I -> Result <std::vector <T>, E | E2>
   inline constexpr auto separated = [] <typename P, typename S> (P && p, S && s) constexpr noexcept
   {
-    return [captured = detail::make_capture (std::forward <P> (p), std::forward <S> (s))] <typename I, typename E = make_variant <failure_type <P, I>, failure_type <S, I>>> (I & input) constexpr -> result::make_result2 <std::vector <success_type <P, I>>, E>
+    return [captured = detail::make_capture (std::forward <P> (p), std::forward <S> (s))] <typename I, typename E = make_variant <failure_type <P, I>, failure_type <S, I>>> (I & input) constexpr -> result::result2 <std::vector <success_type <P, I>>, E>
     {
       auto & [p_, s_] = captured;
       std::vector <success_type <P, I>> v;

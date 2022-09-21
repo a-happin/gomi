@@ -62,7 +62,7 @@ namespace chino::parser::utf8
       using Undefined = make_variant <undefined_type <Ps, I> ...>;
       using T = std::u8string_view;
       using E = make_variant <failure_type <Ps, I> ...>;
-      constexpr auto impl = [] <std::size_t i, typename U> (auto & self, I & in, U && value, auto & captured_) constexpr noexcept -> result::make_result3 <Undefined, T, E>
+      constexpr auto impl = [] <std::size_t i, typename U> (auto & self, I & in, U && value, auto & captured_) constexpr noexcept -> result::result3 <Undefined, T, E>
       {
         if constexpr (i < sizeof ... (Ps))
         {
@@ -117,7 +117,7 @@ namespace chino::parser::utf8
   template <std::size_t min = 0, std::size_t max = -1zu>
   inline constexpr auto repeat = [] <typename P> (P && p) constexpr noexcept
   {
-    return [captured = detail::make_capture (std::forward <P> (p))] <Input I> (I & input) constexpr -> result::make_result3 <std::conditional_t <min == 0, never, result::undefined>, std::u8string_view, failure_type <P, I>>
+    return [captured = detail::make_capture (std::forward <P> (p))] <Input I> (I & input) constexpr -> result::result3 <std::conditional_t <min == 0, never, result::undefined>, std::u8string_view, failure_type <P, I>>
     {
       auto & [p_] = captured;
       static_assert (std::same_as <success_type <P, I>, std::u8string_view>);
@@ -135,6 +135,7 @@ namespace chino::parser::utf8
         }
         else
         {
+          static_cast <void> (as_undefined (res));
           break;
         }
       }
