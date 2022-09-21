@@ -5,6 +5,7 @@
 
 namespace chino
 {
+  // https://gist.github.com/a-happin/c44f56934f64dffb3e9dc2103dfe149b
   template <std::input_iterator I, std::sentinel_for <I> S, typename Stream, typename Delimiter>
   inline constexpr auto ostream_join (I ite, S last, Stream & stream, const Delimiter & delimiter) -> decltype (auto)
   {
