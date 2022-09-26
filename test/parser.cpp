@@ -107,7 +107,7 @@ struct StringReader : chino::utf8::StringReader
   std::list <Error> * errors_ptr;
 
   explicit StringReader (Source & source, std::list <Error> & errors)
-    : super (source.str)
+    : super (std::u8string_view {source.str})
     , source_ptr {&source}
     , errors_ptr {&errors}
   {

@@ -6,6 +6,9 @@
 
 namespace chino::parser::result
 {
+  // ********************************
+  // * define result types
+  // ********************************
   struct undefined
   {
     friend constexpr auto operator <=> (undefined, undefined) noexcept -> std::strong_ordering = default;
@@ -41,6 +44,10 @@ namespace chino::parser::result
   template <typename E>
   failure (E &&) -> failure <std::remove_cvref_t <E>>;
 
+
+  // ********************************
+  // * utility result types
+  // ********************************
   template <typename U, typename T, typename E>
   using result3 = make_variant <
     U,
@@ -54,6 +61,10 @@ namespace chino::parser::result
   template <typename T>
   using optional = std::variant <undefined, success <T>>;
 
+
+  // ********************************
+  // * result traits
+  // ********************************
   template <typename>
   struct result_traits;
 
@@ -369,6 +380,10 @@ namespace chino::parser::result
     }
   };
 
+
+  // ********************************
+  // * utility functions
+  // ********************************
   template <typename T>
   concept Result = requires
   {
@@ -541,6 +556,7 @@ namespace chino::parser::result
     else if (is_failure (r))
     {
       return failure <E> {get_failure (std::forward <R> (r))};
+      /* return as_failure (std::forward <R> (r)); */
     }
     else
     {
@@ -569,6 +585,7 @@ namespace chino::parser::result
     if (is_success (r))
     {
       return success <T> {get_success (std::forward <R> (r))};
+      /* return as_success (std::forward <R> (r)); */
     }
     else if (is_failure (r))
     {
@@ -589,5 +606,3 @@ namespace chino::parser::result
 }
 
 #endif
-
-
