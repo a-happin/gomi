@@ -31,7 +31,6 @@ namespace chino::parser::utf8
   concept Input = requires (I & input)
   {
     requires std::copyable <I>;
-    {input.position ()} -> std::copyable;
     {input.pointer ()} -> std::same_as <const char8_t *>;
     {input.as_str ()} -> std::same_as <std::u8string_view>;
     {input.can_read ()} -> std::same_as <bool>;
@@ -154,7 +153,7 @@ namespace chino::parser::utf8
   // --------------------------------
   // example parsers
   // --------------------------------
-  inline constexpr auto position = [] <Input I> (I & input) constexpr noexcept
+  inline constexpr auto position = [] <Input I> (I & input) constexpr noexcept -> result::success <std::remove_cvref_t <decltype (input.position ())>>
   {
     return result::success {input.position ()};
   };

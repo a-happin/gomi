@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <sstream>
 
+#include <span>
+
 namespace chino::utf8
 {
   struct invalid_utf8_error : std::runtime_error
@@ -14,6 +16,59 @@ namespace chino::utf8
   };
   // TODO: 外に出す
   invalid_utf8_error::~ invalid_utf8_error () noexcept = default;
+
+  struct BinaryReader
+  {
+    using pointer_t = const std::byte *;
+    using Position = std::size_t;
+
+  private:
+    pointer_t ptr, last;
+    Position pos = 1zu;
+
+  public:
+    constexpr BinaryReader () noexcept
+      : ptr {nullptr}
+      , last {nullptr}
+    {}
+
+    constexpr BinaryReader (pointer_t first_, pointer_t last_) noexcept
+      : ptr {first_}
+      , last {last_}
+    {}
+
+    constexpr auto position () const noexcept
+    {
+      return pos;
+    }
+
+    constexpr auto pointer () const noexcept
+    {
+      return ptr;
+    }
+
+    constexpr auto as_span () const noexcept
+    {
+      return std::span {ptr, last};
+    }
+
+    constexpr auto can_read () const noexcept
+    {
+      return ptr < last;
+    }
+
+    constexpr auto peek () const noexcept -> decltype (auto)
+    {
+      return * ptr;
+    }
+
+    constexpr auto next () noexcept -> decltype (auto)
+    {
+      ++ ptr;
+      ++ pos;
+      return * this;
+    }
+  };
 
   struct StringReader
   {
