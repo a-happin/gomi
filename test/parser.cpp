@@ -79,13 +79,13 @@ struct Source
   }
 };
 
-struct StringReader : chino::utf8::StringReader
+struct StringReader : chino::utf8::UTF8StringReader
 {
-  using super = chino::utf8::StringReader;
+  using super = chino::utf8::UTF8StringReader;
   struct Position
   {
     const Source * source_ptr;
-    chino::utf8::StringReader::Position pos;
+    chino::utf8::UTF8StringReader::Position pos;
 
     friend auto operator << (std::ostream & stream, const Position & p) -> decltype (auto)
     {
