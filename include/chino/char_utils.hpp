@@ -450,6 +450,8 @@ namespace chino::char_utils
     inline constexpr auto is_space = contains {ranges::space};
     inline constexpr auto is_endline = contains {ranges::endline};
     inline constexpr auto is_ascii = [] (char32_t c) constexpr noexcept { return c < 0x80; };
+    inline constexpr auto is_word_head = [] (char32_t c) constexpr noexcept { return is_XID_Start (c) || c == U'_'; };
+    inline constexpr auto is_word_tail = [] (char32_t c) constexpr noexcept { return is_XID_Continue (c) || c == U'_'; };
   }
 }
 #endif
