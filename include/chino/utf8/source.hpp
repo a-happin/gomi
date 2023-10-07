@@ -28,7 +28,7 @@ namespace chino::utf8::source
     template <std::same_as <char> CharT>
     friend auto operator << (std::basic_ostream <CharT> & stream, const Self & self) noexcept -> decltype (auto)
     {
-      return stream << self.begin << '~' << self.end << ':' << '`' << std::basic_string_view <CharT> {reinterpret_cast <const CharT *> (self.str.data ()), reinterpret_cast <const CharT *> (self.str.data () + self.str.length ())} << '`';
+      return stream << self.begin << '~' << self.end << ':' << '`' << std::basic_string_view <CharT> {reinterpret_cast <const CharT *> (self.str.data ()), self.str.length ()} << '`';
     }
   };
 
